@@ -378,34 +378,44 @@ function CostOfPlan({ plan }: { plan: TargetPlan }) {
 }
 
 // ---- staged run banner ---------------------------------------------------------
+const RUN_KIND_LABELS: Record<string, string> = {
+  baseline: 'Baseline', spatial: 'Territory split', product: 'Product split', realign: 'Realign',
+};
+
 function StagedRunCard({ run }: { run: PlanRun }) {
   const { data: preview } = useRunPreview(run.id);
   const commit = useCommitRun();
   const discard = useDiscardRun();
   const [strategy, setStrategy] = useState<'keep' | 'drop'>('keep');
-  const collisions = preview?.override_collision_count ?? 0;
+  const [showChanges, setShowChanges] = useState(false);
+  const collisions = preview?.override_collisions ?? [];
+  const collisionCount = preview?.override_collision_count ?? 0;
+
+  const title = run.kind === 'realign' && run.scope_node_code
+    ? `Realign of ${run.scope_node_code}`
+    : RUN_KIND_LABELS[run.kind] ?? run.kind;
 
   return (
     <Card className="border-blue-200 bg-blue-50/50">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-gray-800">
-            Staged {run.kind} run{run.scope_node_code ? ` — ${run.scope_node_code}` : ''}
+          <p className="text-sm font-semibold text-gray-800">{title} — staged, not applied yet</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {run.kind === 'baseline'
+              ? 'Reference data: it feeds the top-number suggestion and is never committed. Discard it when you are done reviewing.'
+              : 'The plan is untouched so far. Review the changes, then Commit to put these numbers on the plan — or Discard and re-run with different settings.'}
           </p>
-          {preview && (
-            <p className="mt-0.5 text-xs text-gray-500">
-              {preview.staged_rows} rows · {preview.new} new · {preview.changed} changed
-              {collisions > 0 && <span className="font-medium text-amber-600"> · {collisions} override collision(s)</span>}
+          {preview && run.kind !== 'baseline' && (
+            <p className="mt-1 text-xs text-gray-500">
+              {preview.staged_rows} rows · {preview.new} new · {preview.changed} changed · {preview.unchanged} unchanged
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {collisions > 0 && (
-            <select value={strategy} onChange={(e) => setStrategy(e.target.value as 'keep' | 'drop')}
-                    className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" aria-label="Override strategy">
-              <option value="keep">Keep manual overrides</option>
-              <option value="drop">Drop manual overrides</option>
-            </select>
+          {preview && preview.top_deltas.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => setShowChanges((v) => !v)}>
+              {showChanges ? 'Hide changes' : 'What changes?'}
+            </Button>
           )}
           <Button variant="outline" size="sm" loading={discard.isPending}
                   onClick={() => discard.mutate(run.id, { onSuccess: () => notify.success('Run discarded') })}>
@@ -422,16 +432,56 @@ function StagedRunCard({ run }: { run: PlanRun }) {
           )}
         </div>
       </div>
-      {run.kind === 'baseline' && (
-        <p className="mt-2 text-xs text-gray-500">
-          Baseline is reference data — it feeds the top-number suggestion and is never committed.
-          Discard it when you're done reviewing.
-        </p>
+
+      {showChanges && preview && (
+        <div className="mt-3 overflow-x-auto rounded-lg border border-blue-100 bg-white p-2">
+          <table className="w-full text-xs text-gray-600">
+            <thead><tr className="text-left uppercase text-gray-400">
+              <th className="px-2 py-1">Territory</th><th className="px-2 py-1">KPI</th>
+              <th className="px-2 py-1 text-right">Current</th><th className="px-2 py-1 text-right">Staged</th>
+            </tr></thead>
+            <tbody>
+              {preview.top_deltas.map((d, i) => (
+                <tr key={i}>
+                  <td className="px-2 py-1 font-medium text-gray-800">{d.geography_node}</td>
+                  <td className="px-2 py-1">{d.kpi}</td>
+                  <td className="px-2 py-1 text-right">{inr(d.from)}</td>
+                  <td className="px-2 py-1 text-right">{inr(d.to)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-2 pt-1 text-[11px] text-gray-400">
+            Largest moves first{preview.changed > preview.top_deltas.length
+              ? ` — showing ${preview.top_deltas.length} of ${preview.changed} changed rows` : ''}.
+          </p>
+        </div>
       )}
-      {preview && preview.top_deltas.length > 0 && (
-        <p className="mt-2 text-xs text-gray-500">
-          Biggest move: {preview.top_deltas[0].geography_node} {preview.top_deltas[0].from} → {preview.top_deltas[0].to}
-        </p>
+
+      {collisionCount > 0 && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-medium text-amber-800">
+            {collisionCount} manual edit(s) sit on numbers this commit would change:
+          </p>
+          <ul className="mt-1 space-y-0.5 text-xs text-amber-700">
+            {collisions.slice(0, 5).map((c, i) => (
+              <li key={i}>{c.geography_node} · {c.kpi} — manual {inr(c.override)}, new system number {inr(c.staged)}</li>
+            ))}
+            {collisionCount > 5 && <li>…and {collisionCount - 5} more</li>}
+          </ul>
+          <div className="mt-2 space-y-1 text-xs text-gray-700">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="override-strategy" checked={strategy === 'keep'}
+                     onChange={() => setStrategy('keep')} />
+              Keep the manual edits — the system number updates underneath them
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="override-strategy" checked={strategy === 'drop'}
+                     onChange={() => setStrategy('drop')} />
+              Replace the manual edits with the new system numbers
+            </label>
+          </div>
+        </div>
       )}
     </Card>
   );
