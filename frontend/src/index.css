@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #8B1A1A;
+  --color-primary-light: #A52422;
+  --color-primary-dark: #6B0F0F;
+  --color-primary-50: #FDF2F2;
+  --color-primary-100: #FDE8E8;
+
+  /* Semantic intent colors — use these instead of raw green/amber/red/gray. */
+  --color-success: #15803D;
+  --color-success-50: #F0FDF4;
+  --color-success-100: #DCFCE7;
+  --color-warning: #B45309;
+  --color-warning-50: #FFFBEB;
+  --color-warning-100: #FEF3C7;
+  --color-danger: #B91C1C;
+  --color-danger-50: #FEF2F2;
+  --color-danger-100: #FEE2E2;
+  --color-muted: #6B7280;
+}

@@ -1,0 +1,17 @@
+{
+  "entry": [
+    "src/main.tsx",
+    "src/**/*.test.{ts,tsx}",
+    "vitest.setup.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "dist/**"
+  ],
+  "ignoreDependencies": [
+    "tailwindcss"
+  ],
+  "ignoreExportsUsedInFile": true
+}

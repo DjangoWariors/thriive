@@ -1,0 +1,29 @@
+# Project docs & instructions (not tracked)
+docs/
+CLAUDE.md
+
+# --- Python / Django (backend) ---
+__pycache__/
+*.py[cod]
+*.sqlite3
+backend/venv/
+backend/.env
+backend/media/
+backend/staticfiles/
+backend/*.log
+.pytest_cache/
+
+# --- Node / React / Vite (frontend) ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# --- Editors / IDE ---
+.idea/
+.vscode/
+
+# --- OS ---
+.DS_Store
+Thumbs.db

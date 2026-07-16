@@ -1,0 +1,32 @@
+import api from './api';
+import type { PaginatedResponse } from '../types/api';
+import type { AppNotification } from '../types/notification';
+import type { NotificationPreference, NotificationPrefs } from '../types/settings';
+
+const BASE = '/api/v1/notifications';
+
+export const notificationService = {
+  async list(params?: { unread?: boolean; page?: number }): Promise<PaginatedResponse<AppNotification>> {
+    const { data } = await api.get<PaginatedResponse<AppNotification>>(`${BASE}/`, { params });
+    return data;
+  },
+  async unreadCount(): Promise<number> {
+    const { data } = await api.get<{ count: number }>(`${BASE}/unread-count/`);
+    return data.count;
+  },
+  async markRead(id: number): Promise<AppNotification> {
+    const { data } = await api.post<AppNotification>(`${BASE}/${id}/read/`);
+    return data;
+  },
+  async markAllRead(): Promise<void> {
+    await api.post(`${BASE}/read-all/`);
+  },
+  async getPreferences(): Promise<NotificationPreference> {
+    const { data } = await api.get<NotificationPreference>(`${BASE}/preferences/`);
+    return data;
+  },
+  async updatePreferences(prefs: NotificationPrefs): Promise<NotificationPreference> {
+    const { data } = await api.patch<NotificationPreference>(`${BASE}/preferences/`, { prefs });
+    return data;
+  },
+};
