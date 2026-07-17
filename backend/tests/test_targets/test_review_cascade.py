@@ -90,6 +90,18 @@ def in_review(plan):
     return PlanService.transition_plan(plan, TargetPlan.IN_REVIEW)
 
 
+def test_cascade_width_is_capped(world, plan, monkeypatch):
+    # A cascade pointed at a wide level (beats/outlets) must refuse, not open thousands
+    # of tasks; the failed transition rolls back so the plan stays draft.
+    from apps.targets import review_services
+    monkeypatch.setattr(review_services, '_MAX_CASCADE_TASKS', 1)
+    with pytest.raises(BusinessError, match='unmanageable'):
+        PlanService.transition_plan(plan, TargetPlan.IN_REVIEW)
+    plan.refresh_from_db()
+    assert plan.status == TargetPlan.DRAFT
+    assert plan.review_tasks.count() == 0
+
+
 def task_for(plan, node):
     return ReviewTask.objects.get(plan=plan, node=node)
 

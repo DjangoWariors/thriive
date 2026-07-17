@@ -56,6 +56,38 @@ class NotificationService:
         return notif
 
     @staticmethod
+    def send_bulk(template_code: str, recipients) -> int:
+        """Fan-out variant of ``send``: one template fetch, one preference query, chunked
+        bulk inserts — in-app only. For events with thousands of recipients (a final
+        payout run's payees), per-recipient ``send`` would hold the caller's transaction
+        open across thousands of queries. ``recipients`` = iterable of ``(user, context)``;
+        None users are skipped."""
+        recipients = [(u, c or {}) for u, c in recipients if u is not None]
+        if not recipients:
+            return 0
+        tmpl = NotificationTemplate.objects.filter(code=template_code, is_active=True).first()
+        prefs = {
+            p.user_id: p.prefs for p in NotificationPreference.objects.filter(
+                user_id__in=[u.pk for u, _ in recipients])
+        }
+        rows = []
+        for user, context in recipients:
+            if tmpl is None:
+                title = context.get('title') or template_code.replace('_', ' ').title()
+                body, category, link = context.get('body', ''), context.get('category', ''), context.get('link', '')
+            else:
+                title = _render(tmpl.title_template, context)
+                body = _render(tmpl.body_template, context)
+                category, link = tmpl.category, _render(tmpl.link_template, context)
+            if not prefs.get(user.pk, {}).get(category, {}).get('in_app', True):
+                continue  # same opt-out default as is_allowed: missing keys = allowed
+            rows.append(Notification(user=user, code=template_code, category=category,
+                                     title=title, body=body, link=link, metadata=context))
+        for i in range(0, len(rows), 1000):
+            Notification.objects.bulk_create(rows[i:i + 1000], batch_size=1000)
+        return len(rows)
+
+    @staticmethod
     def unread_count(user) -> int:
         return Notification.objects.filter(user=user, is_read=False).count()
 

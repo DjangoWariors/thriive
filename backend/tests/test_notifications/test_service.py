@@ -58,6 +58,33 @@ class TestSend:
 
 
 @pytest.mark.django_db
+class TestSendBulk:
+    def test_bulk_renders_skips_none_and_respects_optout(self, django_assert_max_num_queries):
+        from apps.notifications.services import NotificationPreferenceService
+
+        NotificationTemplate.objects.create(
+            code='payout_ready', category='payout', channel=NotificationTemplate.IN_APP,
+            title_template='Payout ready', body_template='₹{total_payout} for {scheme}.',
+        )
+        users = [User.objects.create_user(email=f'b{i}@x.com', password='p') for i in range(4)]
+        NotificationPreferenceService.set(users[0], {'payout': {'in_app': False}})  # opted out
+
+        recipients = [(None, {'total_payout': '1', 'scheme': 'S'})] + [
+            (u, {'total_payout': str(100 + i), 'scheme': 'S'}) for i, u in enumerate(users)
+        ]
+        # One template fetch + one preference fetch + one insert — never a query per user.
+        with django_assert_max_num_queries(4):
+            sent = NotificationService.send_bulk('payout_ready', recipients)
+        assert sent == 3  # 4 users − 1 opted out; the None user silently skipped
+        assert Notification.objects.filter(user=users[0]).count() == 0
+        n = Notification.objects.get(user=users[1])
+        assert n.title == 'Payout ready' and n.body == '₹101 for S.' and n.category == 'payout'
+
+    def test_bulk_empty_is_noop(self, db):
+        assert NotificationService.send_bulk('payout_ready', []) == 0
+
+
+@pytest.mark.django_db
 class TestReadState:
     def test_unread_count(self, user):
         Notification.objects.create(user=user, title='a')

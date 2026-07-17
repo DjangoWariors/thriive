@@ -207,6 +207,10 @@ class Node(BaseModel, VersionedMixin):
             models.Index(fields=['channel', 'entity_type'],    name='hier_node_chan_type_idx'),
             models.Index(fields=['path', 'is_current', 'is_active'], name='hier_node_path_cur_act_idx'),
             GinIndex(fields=['name'], name='hier_node_name_trgm', opclasses=['gin_trgm_ops']),
+            # The workspace list is ORDER BY name LIMIT n — the trgm GIN above serves
+            # search but not ordering; without a btree every page sorts the whole table
+            # (~700ms at 200k rows).
+            models.Index(fields=['name'], name='hier_node_name_idx'),
         ]
 
     def __str__(self):

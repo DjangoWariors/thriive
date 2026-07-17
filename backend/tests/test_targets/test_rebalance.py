@@ -62,3 +62,17 @@ def test_pending_sibling_is_never_rebalanced(world):
 
     TargetService.reject_allocation(a2, reason='no')
     assert total(world) == Decimal('20000')  # T2's +1000 cleanly gone, invariant intact
+
+
+def test_rebalance_pool_is_capped(world, monkeypatch):
+    # A very wide parent (outlet levels run to thousands of siblings) must refuse loudly
+    # instead of locking and rewriting them all in one transaction.
+    from apps.core.exceptions import BusinessError
+
+    monkeypatch.setattr(TargetService, '_MAX_REBALANCE_SIBLINGS', 2)
+    a1 = world['allocs'][0]  # 3 siblings > cap of 2
+    with pytest.raises(BusinessError, match='capped'):
+        TargetService.modify_allocation(a1, Decimal('6000'), reason='r', rebalance=True)
+    a1.refresh_from_db()
+    assert a1.effective_target == Decimal('5000')  # nothing applied
+    assert total(world) == Decimal('20000')

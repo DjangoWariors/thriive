@@ -6,6 +6,7 @@ lives here is the durable core: the planning calendar (targets are always set mo
 derived person targets (the Assignment-bridge rollup), override governance (change caps +
 maker-checker), approvals, and bulk import.
 """
+import bisect
 import calendar
 import csv
 import io
@@ -215,26 +216,31 @@ class TargetService:
     @staticmethod
     def _subtree_allocation_rollup(period, kpi, node_ids, channel, sku_group, live_only=True) -> dict:
         """For each node with no own allocation, sum the *top-most* descendant allocations (skip a
-        row whose ancestor also carries one) so nested allocations aren't double-counted."""
+        row whose ancestor also carries one) so nested allocations aren't double-counted.
+
+        One query for the whole batch: the nightly person pass resolves thousands of owned
+        nodes at once, so this must never be a query per node. Rows are path-sorted; each
+        node's subtree is a contiguous slice found by bisect."""
         if not node_ids:
             return {}
         nodes = list(GeographyNode.objects.filter(pk__in=node_ids, is_active=True).values('id', 'path'))
         base = TargetAllocation.objects.live() if live_only else TargetAllocation.objects.filter(is_active=True)
+        rows = sorted(base.filter(
+            target_period=period, kpi=kpi, channel=channel, sku_group=sku_group,
+        ).values_list('geography_node__path', 'override_value', 'target_value'))
+        paths = [r[0] for r in rows]
         result = {}
         for n in nodes:
-            rows = list(
-                base.filter(
-                    target_period=period, kpi=kpi, channel=channel, sku_group=sku_group,
-                    geography_node__path__startswith=n['path'],
-                ).select_related('geography_node').order_by('geography_node__depth')
-            )
-            kept_paths, total = [], Decimal('0')
-            for a in rows:
-                path = a.geography_node.path
-                if any(path.startswith(kp) and path != kp for kp in kept_paths):
-                    continue  # an ancestor allocation already counts this node's target
-                kept_paths.append(path)
-                total += a.effective_target
+            lo = bisect.bisect_left(paths, n['path'])
+            hi = bisect.bisect_left(paths, n['path'] + '￿')
+            kept, total = None, Decimal('0')
+            for path, override, target in rows[lo:hi]:
+                # Path order puts an ancestor right before its descendants, so one
+                # remembered prefix is enough to skip a kept ancestor's whole subtree.
+                if kept and path.startswith(kept):
+                    continue
+                kept = path
+                total += override if override is not None else target
             result[n['id']] = total
         return result
 
@@ -349,6 +355,11 @@ class TargetService:
             TargetService._route_escalation(revision, actor)
         return allocation
 
+    # An edit under a very wide parent (an outlet level can have thousands of siblings)
+    # must not lock and rewrite them all in one transaction — above this, edit without
+    # rebalance and re-split the level with a plan run instead.
+    _MAX_REBALANCE_SIBLINGS = 200
+
     @staticmethod
     def _rebalance_siblings(allocation, old, new, actor, triggered_by=None):
         """Keep the parent's total unchanged by absorbing the delta across geography siblings."""
@@ -358,15 +369,19 @@ class TargetService:
         # PENDING siblings are excluded like LOCKED ones: their value is an optimistic
         # override awaiting a checker — overwriting it would be clobbered (and the parent
         # sum broken) the moment that escalation is rejected and reverts to its old value.
-        siblings = list(
-            TargetAllocation.objects.filter(
-                target_period=allocation.target_period, kpi=allocation.kpi,
-                channel=allocation.channel, sku_group=allocation.sku_group,
-                geography_node__parent_id=node.parent_id,
-            ).exclude(pk=allocation.pk)
-            .exclude(status__in=(TargetAllocation.LOCKED, TargetAllocation.PENDING))
-            .select_related('geography_node').select_for_update(of=('self',))
-        )
+        pool = TargetAllocation.objects.filter(
+            target_period=allocation.target_period, kpi=allocation.kpi,
+            channel=allocation.channel, sku_group=allocation.sku_group,
+            geography_node__parent_id=node.parent_id,
+        ).exclude(pk=allocation.pk).exclude(
+            status__in=(TargetAllocation.LOCKED, TargetAllocation.PENDING))
+        pool_size = pool.count()
+        if pool_size > TargetService._MAX_REBALANCE_SIBLINGS:
+            raise BusinessError(
+                f'This territory has {pool_size} siblings — automatic rebalance is capped at '
+                f'{TargetService._MAX_REBALANCE_SIBLINGS}. Save without rebalance, or re-split '
+                'the level with a plan run.')
+        siblings = list(pool.select_related('geography_node').select_for_update(of=('self',)))
         if not siblings:
             return
         # A placed persona's rebalance must not rewrite territories outside their area

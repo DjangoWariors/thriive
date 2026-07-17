@@ -109,6 +109,33 @@ def test_fallback_rolls_up_leaf_allocations(period, kpi, geo, mgr):
     assert out[mgr.id] == Decimal('10000')
 
 
+def test_fallback_counts_topmost_only(period, kpi, geo, mgr):
+    # A row under an already-counted ancestor must be skipped (nested allocations).
+    sub = GeographyNode.objects.create(
+        geography_type=geo['town1'].geography_type, name='Sub', code='SUB1',
+        level='town', parent=geo['town1'])
+    _alloc(period, kpi, geo['town1'], '4000')
+    _alloc(period, kpi, sub, '999')
+    _alloc(period, kpi, geo['town2'], '6000')
+    out = _derive(period, kpi, mgr)
+    assert out[mgr.id] == Decimal('10000')
+
+
+def test_fallback_batch_is_constant_queries(period, kpi, geo, mgr, django_assert_max_num_queries):
+    # The nightly person pass resolves thousands of allocation-less owned nodes at once —
+    # the fallback must be one batched query, never a query per node.
+    gt = geo['region'].geography_type
+    for i in range(12):
+        n = GeographyNode.objects.create(geography_type=gt, name=f'R{i}', code=f'R{i}', level='region')
+        _own(mgr, n)
+        child = GeographyNode.objects.create(geography_type=gt, name=f'R{i}T', code=f'R{i}T',
+                                             level='town', parent=n)
+        _alloc(period, kpi, child, '100')
+    with django_assert_max_num_queries(8):
+        out = _derive(period, kpi, mgr)
+    assert out[mgr.id] == Decimal('1200')
+
+
 # ── effective dating: a transfer moves which person's rollup a territory lands in ──
 def test_rollup_respects_effective_dating(period, kpi, geo, mgr, ase1, ase2):
     _alloc(period, kpi, geo['town1'], '4000')

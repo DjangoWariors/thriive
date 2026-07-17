@@ -28,6 +28,10 @@ _EFFECTIVE = Case(
 
 _TERMINAL = {ReviewTask.ACCEPTED, ReviewTask.ADJUSTED, ReviewTask.FORCE_CLOSED}
 
+# A cascade is a managed negotiation, not a broadcast: pointed at a wide level (beats,
+# outlets) it would open thousands of tasks + notifications nobody can shepherd.
+_MAX_CASCADE_TASKS = 1000
+
 
 class ReviewService:
 
@@ -39,14 +43,21 @@ class ReviewService:
         on (plan, node) — reopening tops up new territories without resetting responses."""
         if not plan.review_levels:
             return 0
-        nodes = GeographyNode.objects.filter(
+        nodes = list(GeographyNode.objects.filter(
             path__startswith=plan.root_geography.path, is_active=True,
             level__in=plan.review_levels,
-        )
+        ))
+        if len(nodes) > _MAX_CASCADE_TASKS:
+            raise BusinessError(
+                f'Review level(s) {", ".join(plan.review_levels)} cover {len(nodes)} territories '
+                f'under {plan.root_geography.name} — a cascade wider than {_MAX_CASCADE_TASKS} is '
+                'unmanageable. Pick a higher geography level for the field review.')
+        # One query for all owners — never owner_of per territory.
+        owners = AssignmentService.owners_for_scopes(
+            [n.id for n in nodes], on=timezone.localdate())
         created = 0
-        today = timezone.localdate()
         for node in nodes:
-            owner = AssignmentService.owner_of(node.id, on=today)
+            owner = owners.get(node.id)
             if owner is None:
                 continue  # a task nobody can answer only wedges publish behind force-close
             _, was_created = ReviewTask.objects.get_or_create(
