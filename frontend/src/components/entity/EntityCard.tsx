@@ -29,6 +29,7 @@ import {
 import {useAssignments, useEndAssignment} from '../../hooks/useAssignments';
 import {useHierarchyStore} from '../../stores/hierarchyStore';
 import {useRBAC} from '../../hooks/useRBAC';
+import {CHANGE_ROLE_ENABLED, PERSON_TRANSFER_ENABLED} from '../../config/features';
 
 
 
@@ -265,11 +266,13 @@ export function EntityCard({entityId}: Props) {
                                 onClick={() => setShowEditForm(true)}>
                             Edit
                         </Button>
-                        <Button size="sm" variant="outline" icon={<ArrowRightLeft className="h-3.5 w-3.5"/>}
-                                onClick={() => setShowTransfer(true)}>
-                            Transfer person
-                        </Button>
-                        {entity.status === 'active' && (
+                        {PERSON_TRANSFER_ENABLED && (
+                            <Button size="sm" variant="outline" icon={<ArrowRightLeft className="h-3.5 w-3.5"/>}
+                                    onClick={() => setShowTransfer(true)}>
+                                Transfer person
+                            </Button>
+                        )}
+                        {CHANGE_ROLE_ENABLED && entity.status === 'active' && (
                             <Button size="sm" variant="outline" icon={<Repeat className="h-3.5 w-3.5"/>}
                                     onClick={() => setShowChangeType(true)}>
                                 Change Role

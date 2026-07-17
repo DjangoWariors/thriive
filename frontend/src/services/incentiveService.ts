@@ -21,7 +21,6 @@ import type {
   RunListParams,
   SchemePayload,
   SchemeValidateResult,
-  SipStructureGroup,
   VariablePay,
   VariablePayBulkResult,
 } from '../types/incentive';
@@ -30,15 +29,10 @@ const BASE = '/api/v1/incentives';
 
 export const incentiveService = {
   //schemes
-  async listSchemes(params?: { entity_type?: string; include_inactive?: boolean }):
+  async listSchemes(params?: { entity_type?: string; include_inactive?: boolean; page_size?: number }):
     Promise<PaginatedResponse<IncentiveSchemeListItem>> {
     const { data } = await api.get<PaginatedResponse<IncentiveSchemeListItem>>(
       `${BASE}/schemes/`, { params });
-    return data;
-  },
-
-  async sipStructures(): Promise<SipStructureGroup[]> {
-    const { data } = await api.get<SipStructureGroup[]>(`${BASE}/schemes/sip-structures/`);
     return data;
   },
 
@@ -108,33 +102,6 @@ export const incentiveService = {
   },
 
   /** Returns a BulkJob (poll /api/v1/jobs/{id}/) plus the created run_id. */
-  async computeRun(schemeId: number, periodId: number): Promise<BulkJob & { run_id: number }> {
-    const { data } = await api.post<BulkJob & { run_id: number }>(
-      `${BASE}/payout-runs/compute/`, { scheme_id: schemeId, period_id: periodId });
-    return data;
-  },
-
-  async submitRun(id: number): Promise<PayoutRun> {
-    const { data } = await api.post<PayoutRun>(`${BASE}/payout-runs/${id}/submit/`);
-    return data;
-  },
-
-  async approveRun(id: number): Promise<PayoutRun> {
-    const { data } = await api.post<PayoutRun>(`${BASE}/payout-runs/${id}/approve/`);
-    return data;
-  },
-
-  async rejectRun(id: number, reason: string): Promise<PayoutRun> {
-    const { data } = await api.post<PayoutRun>(`${BASE}/payout-runs/${id}/reject/`, { reason });
-    return data;
-  },
-
-  async markRunPaid(id: number, paymentRef: string): Promise<PayoutRun> {
-    const { data } = await api.post<PayoutRun>(
-      `${BASE}/payout-runs/${id}/mark-paid/`, { payment_ref: paymentRef });
-    return data;
-  },
-
   //payouts
   async listPayouts(params?: PayoutListParams): Promise<PaginatedResponse<PayoutListItem>> {
     const { data } = await api.get<PaginatedResponse<PayoutListItem>>(

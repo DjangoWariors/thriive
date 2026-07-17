@@ -162,7 +162,7 @@ class PlanService:
                     raise BusinessError(
                         f'Projected payout at 100% achievement ({at_100}) exceeds the plan '
                         f'budget ({budget}). Review the cost preview, or publish with an '
-                        'explicit over-budget override.')
+                        'explicit over-budget override.', code='over_budget')
 
         plan.status = new_status
         plan.save(update_fields=['status', 'updated_at'])

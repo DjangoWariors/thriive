@@ -1,3 +1,4 @@
+from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view,
 )
@@ -264,6 +265,16 @@ class AlertViewSet(NodeScopedQuerysetMixin, ReadOnlyModelViewSet):
         alert.status = Alert.ACKNOWLEDGED
         alert.save(update_fields=['status', 'updated_at'])
         return Response(AlertSerializer(alert).data)
+
+    @extend_schema(tags=['Achievements'], operation_id='alert_acknowledge_all',
+                   summary='Acknowledge every open alert in view (honours ?period=)',
+                   request=None,
+                   responses={200: OpenApiResponse(description='{"acknowledged": <count>}')})
+    @action(detail=False, methods=['patch'], url_path='acknowledge-all')
+    def acknowledge_all(self, request):
+        qs = self.get_queryset().filter(status=Alert.OPEN)
+        updated = qs.update(status=Alert.ACKNOWLEDGED, updated_at=timezone.now())
+        return Response({'acknowledged': updated})
 
 
 @extend_schema_view(

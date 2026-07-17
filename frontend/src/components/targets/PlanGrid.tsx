@@ -14,7 +14,6 @@ const PAGE_SIZE = 200;
 export interface PlanGridProps {
   planId: number;
   kpiId: number;
-  periodId?: number;
   rootParentId?: number;
   /** KPI display unit ('₹', 'outlets', …) and precision — drives every number cell. */
   unit?: string;
@@ -30,7 +29,6 @@ export interface PlanGridProps {
 }
 
 interface Ctx extends Required<Pick<PlanGridProps, 'planId' | 'kpiId' | 'canEdit' | 'onEdit' | 'onExplain' | 'onOwner' | 'showReview'>> {
-  periodId?: number;
   fmt: (value: string | null) => string;
 }
 
@@ -40,16 +38,16 @@ interface Ctx extends Required<Pick<PlanGridProps, 'planId' | 'kpiId' | 'canEdit
  * whole subtree, so it scales to very large geographies.
  */
 export function PlanGrid({
-  planId, kpiId, periodId, rootParentId, unit, decimalPlaces,
+  planId, kpiId, rootParentId, unit, decimalPlaces,
   showReview = true, canEdit, onEdit, onExplain, onOwner,
 }: PlanGridProps) {
   // page: 1 keeps this key identical to the first LevelPage's, so the header and the
   // first child level share one request instead of fetching the same page twice.
   const { data, isLoading } = useGrid(planId, {
-    kpi: kpiId, parent: rootParentId, period: periodId, page: 1, page_size: PAGE_SIZE,
+    kpi: kpiId, parent: rootParentId, page: 1, page_size: PAGE_SIZE,
   });
   const ctx: Ctx = {
-    planId, kpiId, periodId, showReview, canEdit, onEdit, onExplain, onOwner,
+    planId, kpiId, showReview, canEdit, onEdit, onExplain, onOwner,
     fmt: makeUnitFormatter(unit, decimalPlaces),
   };
   const columns = showReview ? 10 : 9;
@@ -78,7 +76,7 @@ export function PlanGrid({
               <InfoTooltip content="This territory's slice of its parent's target." /></span>
           </th>
           <th className="text-right">
-            <span className="inline-flex items-center gap-1">Bottom-up
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">Bottom-up
               <InfoTooltip content="What the children currently sum to. Amber when it no longer matches the territory's own number." /></span>
           </th>
           {showReview && <th className="text-center">Review</th>}
@@ -272,7 +270,7 @@ function LevelPage({ parentId, depth, page, ctx, isLast, onLoadMore }: {
   parentId: number; depth: number; page: number; ctx: Ctx; isLast: boolean; onLoadMore: () => void;
 }) {
   const { data, isLoading } = useGrid(ctx.planId, {
-    kpi: ctx.kpiId, parent: parentId, period: ctx.periodId, page, page_size: PAGE_SIZE,
+    kpi: ctx.kpiId, parent: parentId, page, page_size: PAGE_SIZE,
   });
   const columns = ctx.showReview ? 10 : 9;
   if (isLoading) return <SkeletonRows depth={depth} columns={columns} count={2} />;

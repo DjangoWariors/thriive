@@ -219,11 +219,6 @@ class PayoutRunSerializer(serializers.ModelSerializer):
         return self._full_name(obj.approved_by)
 
 
-class ComputePayoutRequestSerializer(serializers.Serializer):
-    scheme_id = serializers.IntegerField()
-    period_id = serializers.IntegerField()
-
-
 class AdjustRequestSerializer(serializers.Serializer):
     reference_run_id = serializers.IntegerField()
     cycle_id = serializers.IntegerField()

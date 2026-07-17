@@ -74,3 +74,11 @@ export function useAcknowledgeAlert() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['achievements'] }),
   });
 }
+
+export function useAcknowledgeAllAlerts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (period?: number) => achievementService.acknowledgeAllAlerts(period),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['achievements'] }),
+  });
+}

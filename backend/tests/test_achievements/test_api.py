@@ -150,3 +150,44 @@ class TestDrilldownAndCompute:
                   perms={'achievement_view': 'team', 'achievement_compute': 'full'})
         resp = _client(u).post(f'{BASE}compute/', {'period_id': period.id}, format='json')
         assert resp.status_code == 202
+
+
+@pytest.mark.django_db
+class TestAlertAcknowledgeAll:
+    def _alerts(self, tree, period):
+        from apps.achievements.models import Alert, AlertRule
+        rule = AlertRule.objects.create(
+            code='AT_RISK', name='Target at risk', effective_from=date.today(),
+            metric=AlertRule.PROJECTED_PCT, comparator='lt', threshold=Decimal('90'),
+        )
+        return {
+            code: Alert.objects.create(rule=rule, entity=tree[code], target_period=period)
+            for code in ('ase1', 'ase2', 'nsm')
+        }
+
+    def test_acknowledges_only_open_alerts_in_scope(self, tree, period):
+        from apps.achievements.models import Alert
+        alerts = self._alerts(tree, period)
+        u = _user('asm@x.com', entity=tree['asm'], perms={'achievement_view': 'team'})
+
+        resp = _client(u).patch(f'{BASE}alerts/acknowledge-all/?period={period.id}')
+        assert resp.status_code == 200
+        assert resp.data['acknowledged'] == 2  # ase1 + ase2; nsm is outside the subtree
+
+        for code, expected in (('ase1', Alert.ACKNOWLEDGED), ('ase2', Alert.ACKNOWLEDGED),
+                               ('nsm', Alert.OPEN)):
+            alerts[code].refresh_from_db()
+            assert alerts[code].status == expected
+
+    def test_skips_already_acknowledged_and_resolved(self, tree, period):
+        from apps.achievements.models import Alert
+        alerts = self._alerts(tree, period)
+        alerts['ase1'].status = Alert.RESOLVED
+        alerts['ase1'].save(update_fields=['status'])
+        su = User.objects.create_superuser(email='su2@x.com', password='pass')
+
+        resp = _client(su).patch(f'{BASE}alerts/acknowledge-all/')
+        assert resp.status_code == 200
+        assert resp.data['acknowledged'] == 2  # ase2 + nsm; resolved ase1 untouched
+        alerts['ase1'].refresh_from_db()
+        assert alerts['ase1'].status == Alert.RESOLVED

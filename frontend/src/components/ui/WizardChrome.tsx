@@ -10,21 +10,25 @@ export interface WizardStep {
 /**
  * Icon pill stepper shared by the EntityType and KPI wizards. Completed steps
  * are clickable (when `onStepClick` is provided) so users can jump back.
+ * `completed` overrides the linear i-before-current rule for flows where steps
+ * complete independently (the plan pipeline).
  */
 export function Stepper({
     steps,
     current,
+    completed,
     onStepClick,
 }: {
     steps: WizardStep[];
     current: number;
+    completed?: boolean[];
     onStepClick?: (index: number) => void;
 }) {
     return (
         <div className="flex items-center gap-1 overflow-x-auto">
             {steps.map((s, i) => {
                 const Icon = s.icon;
-                const done = i < current;
+                const done = completed ? (completed[i] ?? false) && i !== current : i < current;
                 const active = i === current;
                 const clickable = !!onStepClick && i !== current;
                 return (

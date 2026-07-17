@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Search, Upload, Wallet } from 'lucide-react';
 import { usePeriodSelector } from '../../hooks/usePeriodSelector';
+import { useTargetPeriods } from '../../hooks/useTargets';
 import { useEntitySearch } from '../../hooks/useEntities';
 import {
   useBulkImportVariablePay, useUpsertVariablePay, useVariablePay,
@@ -9,6 +10,7 @@ import { useRBAC } from '../../hooks/useRBAC';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { HowThisWorks } from '../../components/ui/HowThisWorks';
 import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
@@ -39,6 +41,9 @@ function parseCsv(text: string): Array<Record<string, unknown>> {
 
 export default function VariablePayPage() {
   const { selectedPeriodId } = usePeriodSelector();
+  // Same no-arg call as the header's PeriodSelector, so this hits the React Query cache.
+  const { data: periodsResp } = useTargetPeriods();
+  const periodName = periodsResp?.results.find((p) => p.id === selectedPeriodId)?.name;
   const { canWrite } = useRBAC();
   const writable = canWrite('scheme_management');
 
@@ -53,8 +58,8 @@ export default function VariablePayPage() {
   return (
     <div className="p-6">
       <PageHeader
-          title="Variable Pay"
-          description="The monthly pay base each person's incentive is computed against. Eligible working days prorate it for mid-month joiners, transfers and approved leave."
+          title={periodName ? `Variable Pay — ${periodName}` : 'Variable Pay'}
+          description="The monthly pay base each person's incentive is computed against — one row per person for the month picked in the header. Eligible working days prorate it for mid-month joiners, transfers and approved leave."
           actions={writable && selectedPeriodId !== null && (
             <>
               <Button variant="outline" icon={<Upload className="h-4 w-4" />} onClick={() => setImporting(true)}>
@@ -66,6 +71,27 @@ export default function VariablePayPage() {
             </>
           )}
       />
+
+      <HowThisWorks storageKey="variable-pay-help" className="mb-6">
+        <p>
+          Variable pay is the <strong>at-risk part of a person's salary</strong> — the amount they
+          play for each month. HR decides it; the platform never calculates it. It is not the payout
+          itself: it is the base every payout is computed from.
+        </p>
+        <p className="mt-2">
+          <strong>Example:</strong> Priya's salary is ₹80,000 — ₹50,000 fixed + ₹30,000 variable, so
+          you enter <strong>30,000</strong> here for the month. Her SIP's monthly scheme pays against
+          80% of it → a ₹24,000 base. If she hits 105% of target and the multiplier grid says 1.2x on
+          a KPI weighted 70%, that line pays 24,000 × 1.2 × 70% = <strong>₹20,160</strong>. Perform
+          at exactly 1x on everything and the payout equals the base; strong months can pay more,
+          weak months less.
+        </p>
+        <p className="mt-2">
+          Two rules to remember: a person <strong>without a row here earns nothing</strong> for the
+          month, and someone eligible only part of the month gets a prorated base — set eligible
+          working days (e.g. 13 of 26 days → half the base).
+        </p>
+      </HowThisWorks>
 
       {selectedPeriodId === null ? (
         <Card>

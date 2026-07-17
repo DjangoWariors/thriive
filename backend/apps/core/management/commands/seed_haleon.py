@@ -1105,25 +1105,36 @@ class Command(BaseCommand):
             self.stdout.write('  [+] PENDING transfer exception: Anjali Gupta')
 
     def _seed_payout_runs(self, schemes, prev_p):
-        from apps.incentives.models import PayoutRun
-        from apps.incentives.services import PayoutService
+        """Close the previous month through the payout CYCLE — the canonical flow:
+        open -> finalize (freeze achievements) -> compute (final runs off the frozen
+        numbers, every scheme) -> submit for approval. Left UNDER REVIEW and submitted
+        by the NSM (Arvind Menon), so the admin — a different person — can drive
+        Approve -> Disburse with the four-eyes rule intact.
 
-        def _run(scheme, submit):
-            if scheme is None or PayoutRun.objects.filter(
-                    scheme__code=scheme.code, target_period=prev_p).exists():
-                return
-            run = PayoutService.start_run(scheme.id, prev_p.id, actor=self.admin)
-            PayoutService.compute_run(run.id, triggered_by=self.admin)
-            run.refresh_from_db()
-            if submit and run.status == PayoutRun.COMPUTED:
-                PayoutService.submit_for_review(run, self.admin)
-                run.refresh_from_db()
-            self.stdout.write(f'  [+] payout run {scheme.code} × {prev_p.code}: {run.status}')
+        No standalone runs: a standalone final run bypasses the month-close AND would
+        block the cycle's own compute (a live final run of the same kind can't coexist).
+        The current month is left mid-flight on purpose — its MTD achievements sit below
+        the 90% paying floor, so computing it now would (correctly) pay ~0."""
+        from apps.incentives.models import Payout, PayoutCycle
+        from apps.incentives.services import PayoutCycleService
 
-        # GT run sits UNDER REVIEW (maker-checker approve/reject demo); MT run stays
-        # COMPUTED; the ASM scheme is left un-run so the full flow can be driven by hand.
-        _run(schemes.get('GT_SIP_MONTHLY'), submit=True)
-        _run(schemes.get('MT_SIP_MONTHLY'), submit=False)
+        if PayoutCycle.objects.filter(target_period=prev_p).exists():
+            return
+        try:
+            maker = self.people['HAL_NSM'].user  # NSM submits; admin approves
+        except Exception:  # noqa: BLE001
+            maker = self.admin
+
+        cycle = PayoutCycleService.open_cycle(prev_p, actor=self.admin)
+        PayoutCycleService.finalize(cycle, actor=self.admin, as_of=prev_p.end_date)
+        result = PayoutCycleService.compute(cycle, actor=self.admin)
+        PayoutCycleService.submit_cycle(cycle, actor=maker)
+
+        paying = Payout.objects.filter(run__cycle=cycle, total_payout__gt=0).count()
+        self.stdout.write(
+            f'  [+] {prev_p.code} payout cycle UNDER REVIEW: {result["total_payout"]} '
+            f'across {len(result["run_ids"])} runs ({paying} paying) · submitted by NSM '
+            f'— log in as admin to Approve & Disburse')
 
     # ═══════════════════════════════════ AOP plan ════════════════════════════════
     def _seed_plan(self, prev_p, cur_p, engineered_by_period):
@@ -1407,7 +1418,10 @@ class Command(BaseCommand):
             'Negative outlet   — HAL_GT_DL_KB-NEGOUT returns > sales -> excluded from EC.',
             'Missing data      — MTE Blr has no activation score; Manoj has no VP this month.',
             'Declining town    — Lajpat Nagar LY > TY -> negative growth (LOW_GROWTH alert).',
-            'Payout lifecycle  — GT run UNDER REVIEW, MT run COMPUTED, ASM scheme un-run.',
+            'Payout flow       — Jun (closed) cycle UNDER REVIEW at ~253k across all schemes:',
+            '                    /incentives/cycles -> pick Jun -> Approve (admin) -> Disburse.',
+            'Zero-by-design    — Jul is mid-month: MTD achievement < 90% floor -> payouts ~0.',
+            '                    Switch the header period to Jun to see real paid money.',
             'Pending exception — Anjali transfer exception awaiting maker-checker.',
             'AOP plan          — IN REVIEW: spatial/product runs COMMITTED, plan month adjusted.',
             'Cascade review    — tasks accepted / adjusted / escalated / pending; publish blocked.',
@@ -1419,7 +1433,7 @@ class Command(BaseCommand):
             'Delisted SKU      — HAL-DELIST-01 inactive, appears only in LY transactions.',
         ]:
             w(f'    • {line}')
-        w(f'\n  Periods: {self.prev_start:%B %Y} (closed, payout-ready) + '
-          f'{self.cur_start:%B %Y} (MTD, run-rate live)')
+        w(f'\n  Periods: {self.prev_start:%B %Y} (closed — payout cycle UNDER REVIEW) + '
+          f'{self.cur_start:%B %Y} (MTD, run-rate live — payouts ~0 by design)')
         w('  Frontend: http://localhost:5173/   ·   API docs: http://localhost:8000/api/docs/')
         w(f'{div}\n')

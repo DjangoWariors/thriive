@@ -37,7 +37,8 @@ def custom_exception_handler(exc, context):
 
     if isinstance(exc, BusinessError):
         return Response(
-            {'error': True, 'status_code': 422, 'detail': exc.message},
+            {'error': True, 'status_code': 422, 'detail': exc.message,
+             **({'code': exc.code} if exc.code else {})},
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 

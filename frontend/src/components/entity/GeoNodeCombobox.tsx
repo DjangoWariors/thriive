@@ -53,7 +53,7 @@ export function GeoNodeCombobox({
     if (value) {
         return (
             <div className="space-y-1">
-                {label && <label className="text-xs font-medium text-gray-600">{label}</label>}
+                {label && <label className="block text-sm font-medium text-gray-700">{label}</label>}
                 <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                     <span className="flex min-w-0 items-center gap-2 text-sm">
                         <Check className="h-4 w-4 shrink-0 text-success"/>
@@ -75,7 +75,7 @@ export function GeoNodeCombobox({
 
     return (
         <div className="relative w-full space-y-1">
-            {label && <label className="text-xs font-medium text-gray-600">{label}</label>}
+            {label && <label className="block text-sm font-medium text-gray-700">{label}</label>}
             <input
                 type="text"
                 placeholder={placeholder}

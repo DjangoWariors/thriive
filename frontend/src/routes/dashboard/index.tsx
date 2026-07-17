@@ -3,7 +3,7 @@ import { Gauge, IndianRupee, AlertTriangle, Users, Target, Play } from 'lucide-r
 import { useAuth } from '../../hooks/useAuth';
 import { useRBAC } from '../../hooks/useRBAC';
 import { usePeriodSelector } from '../../hooks/usePeriodSelector';
-import { useDashboard, useComputeAchievements, useAcknowledgeAlert } from '../../hooks/useAchievements';
+import { useDashboard, useComputeAchievements, useAcknowledgeAlert, useAcknowledgeAllAlerts } from '../../hooks/useAchievements';
 import { StatCard } from '../../components/data/StatCard';
 import { KPICard } from '../../components/charts/KPICard';
 import { TrendChart } from '../../components/charts/TrendChart';
@@ -28,6 +28,7 @@ export default function Dashboard() {
   const { data, isLoading, isError, refetch } = useDashboard(selectedPeriodId);
   const compute = useComputeAchievements();
   const ack = useAcknowledgeAlert();
+  const ackAll = useAcknowledgeAllAlerts();
 
   const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'there';
   const canCompute = can('achievement_compute');
@@ -172,7 +173,14 @@ export default function Dashboard() {
           </div>
 
           {/* Row 5 — alerts */}
-          <AlertList alerts={alerts} onAcknowledge={(id) => ack.mutate(id)} />
+          <AlertList alerts={alerts} onAcknowledge={(id) => ack.mutate(id)}
+                     onAcknowledgeAll={() => ackAll.mutate(selectedPeriodId, {
+                       onSuccess: (r) => notify.success(
+                         r.acknowledged > 0
+                           ? `${r.acknowledged} alert${r.acknowledged === 1 ? '' : 's'} marked as seen`
+                           : 'Nothing left to mark — all alerts were already seen'),
+                       onError: (e) => notify.error(apiErrorMessage(e, 'Sorry, that didn’t go through')),
+                     })} />
         </>
       )}
     </div>

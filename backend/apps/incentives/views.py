@@ -24,7 +24,6 @@ from .models import (
 )
 from .serializers import (
     AdjustRequestSerializer,
-    ComputePayoutRequestSerializer,
     CycleCreateSerializer,
     CycleFinalizeSerializer,
     DisburseSerializer,
@@ -252,29 +251,10 @@ class PayoutRunViewSet(ReadOnlyModelViewSet):
     def _run(self, pk) -> PayoutRun:
         return get_object_or_404(PayoutRun.objects.select_related('scheme', 'target_period'), pk=pk)
 
-    @extend_schema(tags=['Incentives'], operation_id='payout_run_compute',
-                   summary='Start a payout run for a scheme × period',
-                   request=ComputePayoutRequestSerializer,
-                   responses={202: BulkJobSerializer})
-    @action(detail=False, methods=['post'])
-    def compute(self, request):
-        _require_planning_admin(request, self.required_permission,
-                                'Only plan-wide operators can compute payouts.')
-        ser = ComputePayoutRequestSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        run = PayoutService.start_run(
-            ser.validated_data['scheme_id'], ser.validated_data['period_id'],
-            actor=request.user,
-        )
-        job = JobService.create(
-            BulkJob.JobType.PAYOUT_COMPUTE, request.user,
-            request_id=getattr(request, 'request_id', ''),
-        )
-        from apps.incentives.tasks import compute_payout_run
-        job = run_or_dispatch(compute_payout_run, job, run.pk, request.user.pk)
-        data = BulkJobSerializer(job).data
-        data['run_id'] = run.pk
-        return Response(data, status=status.HTTP_202_ACCEPTED)
+    # NOTE: there is deliberately no standalone compute endpoint. Final runs are
+    # computed by the payout cycle (finalize → compute, off frozen achievements);
+    # estimates come from the nightly beat. A standalone final compute would bypass
+    # readiness checks and the achievement freeze.
 
     @extend_schema(tags=['Incentives'], operation_id='payout_run_adjust',
                    summary='Raise an adjustment run (delta vs a paid, closed-cycle run)',

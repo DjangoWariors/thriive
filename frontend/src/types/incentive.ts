@@ -144,27 +144,6 @@ export interface SchemeValidateResult {
   errors: string[];
 }
 
-// ── SIP structure ───────────────────────────────────────────────────────────
-
-export interface SipComponent {
-  scheme_id: number;
-  scheme_code: string;
-  scheme_name: string;
-  payout_frequency: PayoutFrequency;
-  vp_basis_pct: string;
-  kpi_count: number;
-}
-
-export interface SipStructureGroup {
-  entity_type: string;
-  entity_type_name: string;
-  channel: string | null;
-  components: SipComponent[];
-  total_vp_basis_pct: string;
-  /** Advisory: true when the components' vp_basis_pct sum to exactly 100. */
-  is_complete: boolean;
-}
-
 // ── variable pay ────────────────────────────────────────────────────────────
 
 export interface VariablePay {
@@ -213,7 +192,7 @@ export interface PayoutRun {
   entities_processed: number;
   error_count: number;
   total_payout: string;
-  errors: Array<{ entity_id: number; code: string; error: string }>;
+  errors: Array<{ entity_id: number; entity_name?: string; code: string; error: string }>;
   created_at: string;
   updated_at: string;
 }

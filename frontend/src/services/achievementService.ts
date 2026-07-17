@@ -53,6 +53,12 @@ export const achievementService = {
     return data;
   },
 
+  async acknowledgeAllAlerts(period?: number): Promise<{ acknowledged: number }> {
+    const { data } = await api.patch<{ acknowledged: number }>(
+      `${BASE}/alerts/acknowledge-all/`, undefined, { params: period ? { period } : undefined });
+    return data;
+  },
+
   // alert rules (config)
   async listAlertRules(): Promise<PaginatedResponse<AlertRule>> {
     const { data } = await api.get<PaginatedResponse<AlertRule>>(`${BASE}/alert-rules/`);

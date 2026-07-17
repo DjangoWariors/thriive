@@ -362,7 +362,8 @@ def test_gap_board_shows_progress_and_gap(world, in_review):
     assert kpi_row['top_down'] == '10000.0000'   # ZA 5000 + ZB 5000 originals
     assert kpi_row['bottom_up'] == '10400.0000'  # ZB adjusted to 5400
     assert kpi_row['gap'] == '400.0000'
-    assert board['top_movers'][0]['geography_node'] == 'ZB'
+    assert board['top_movers'][0]['geography_node'] == 'ZoneB'
+    assert board['top_movers'][0]['geography_node_code'] == 'ZB'
 
 
 # ── publish gate 2: cost of plan vs budget ────────────────────────────────────
@@ -395,8 +396,9 @@ def test_over_budget_publish_needs_audited_override(world, plan, scheme_world):
     plan.review_levels = []
     plan.save(update_fields=['review_levels'])
 
-    with pytest.raises(BusinessError, match='exceeds the plan budget'):
+    with pytest.raises(BusinessError, match='exceeds the plan budget') as excinfo:
         PlanService.transition_plan(plan, TargetPlan.PUBLISHED)
+    assert excinfo.value.code == 'over_budget'  # the FE override dialog keys on this
 
     published = PlanService.transition_plan(plan, TargetPlan.PUBLISHED, force_over_budget=True)
     assert published.status == TargetPlan.PUBLISHED

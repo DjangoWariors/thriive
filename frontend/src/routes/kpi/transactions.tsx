@@ -32,7 +32,7 @@ const TYPE_OPTIONS = [
   { value: '', label: 'Sales & returns' },
   { value: 'sale', label: 'Sales only' },
   { value: 'return', label: 'Returns only' },
-  { value: 'credit_note', label: 'Credit notes only' },
+  //{ value: 'credit_note', label: 'Credit notes only' }, #comment by developer
 ];
 
 export default function TransactionsPage() {

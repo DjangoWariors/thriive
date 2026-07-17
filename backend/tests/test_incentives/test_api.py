@@ -94,16 +94,35 @@ class TestPayoutScoping:
         assert _client(asm).get(f'{BASE}payouts/summary/', {'period': period.id}).status_code == 403
 
 
+def _computed_run(scheme, period):
+    """Standalone computed run via the service layer — the API no longer creates
+    final runs outside a cycle (month-close owns final computes)."""
+    run = PayoutService.start_run(scheme.pk, period.pk)
+    PayoutService.compute_run(run.pk)
+    run.refresh_from_db()
+    return run
+
+
 @pytest.mark.django_db
 class TestRunLifecycleApi:
-    def test_compute_requires_planning_admin(self, tree, period, ase_type, kpis):
+    def test_compute_endpoint_is_gone(self, tree, period, ase_type, kpis):
+        # Regression: the standalone final-compute API bypassed the month-close.
         scheme = mk_scheme(ase_type, kpis)
+        admin = _user('ops0@x.com', perms={'final_payout': 'full'})
+        resp = _client(admin).post(f'{BASE}payout-runs/compute/',
+                                   {'scheme_id': scheme.pk, 'period_id': period.pk})
+        assert resp.status_code in (404, 405)  # route no longer exists
+
+    def test_submit_requires_planning_admin(self, tree, period, ase_type, kpis):
+        scheme = mk_scheme(ase_type, kpis)
+        mk_vp(tree['ase1'], period)
+        mk_baseline_achievements(period, kpis, tree['ase1'])
+        run = _computed_run(scheme, period)
         u = _user('rep@x.com', entity=tree['ase1'], perms={'final_payout': 'own_only'})
-        resp = _client(u).post(f'{BASE}payout-runs/compute/',
-                               {'scheme_id': scheme.pk, 'period_id': period.pk})
+        resp = _client(u).post(f'{BASE}payout-runs/{run.pk}/submit/')
         assert resp.status_code == 403
 
-    def test_compute_and_lifecycle(self, tree, period, ase_type, kpis):
+    def test_lifecycle(self, tree, period, ase_type, kpis):
         scheme = mk_scheme(ase_type, kpis)
         mk_vp(tree['ase1'], period)
         mk_baseline_achievements(period, kpis, tree['ase1'])
@@ -111,10 +130,7 @@ class TestRunLifecycleApi:
         approver = _user('fin2@x.com',
                          perms={'final_payout': 'view_all', 'payout_approve': 'full'})
 
-        resp = _client(admin).post(f'{BASE}payout-runs/compute/',
-                                   {'scheme_id': scheme.pk, 'period_id': period.pk})
-        assert resp.status_code == 202, resp.data
-        run_id = resp.data['run_id']
+        run_id = _computed_run(scheme, period).pk
 
         resp = _client(admin).post(f'{BASE}payout-runs/{run_id}/submit/')
         assert resp.status_code == 200

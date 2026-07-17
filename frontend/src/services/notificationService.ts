@@ -1,7 +1,6 @@
 import api from './api';
 import type { PaginatedResponse } from '../types/api';
 import type { AppNotification } from '../types/notification';
-import type { NotificationPreference, NotificationPrefs } from '../types/settings';
 
 const BASE = '/api/v1/notifications';
 
@@ -20,13 +19,5 @@ export const notificationService = {
   },
   async markAllRead(): Promise<void> {
     await api.post(`${BASE}/read-all/`);
-  },
-  async getPreferences(): Promise<NotificationPreference> {
-    const { data } = await api.get<NotificationPreference>(`${BASE}/preferences/`);
-    return data;
-  },
-  async updatePreferences(prefs: NotificationPrefs): Promise<NotificationPreference> {
-    const { data } = await api.patch<NotificationPreference>(`${BASE}/preferences/`, { prefs });
-    return data;
   },
 };

@@ -14,6 +14,7 @@ import {EntityForm} from '../../components/entity/EntityForm';
 import {TransferDialog} from '../../components/entity/TransferDialog';
 import {useEntity, useEntitySubtree} from '../../hooks/useEntities';
 import {useRBAC} from '../../hooks/useRBAC';
+import {PERSON_TRANSFER_ENABLED} from '../../config/features';
 import type {EntitySubtreeItem} from '../../types/entity';
 
 function BackLink() {
@@ -153,10 +154,12 @@ export default function EntityDetailPage() {
                                 onClick={() => setShowEdit(true)}>
                             Edit
                         </Button>
-                        <Button size="sm" variant="outline" icon={<ArrowRightLeft className="h-3.5 w-3.5"/>}
-                                onClick={() => setShowTransfer(true)}>
-                            Transfer
-                        </Button>
+                        {PERSON_TRANSFER_ENABLED && (
+                            <Button size="sm" variant="outline" icon={<ArrowRightLeft className="h-3.5 w-3.5"/>}
+                                    onClick={() => setShowTransfer(true)}>
+                                Transfer
+                            </Button>
+                        )}
                     </div>
                 )}
             </div>

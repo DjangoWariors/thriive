@@ -14,3 +14,13 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
     }
     return fallback;
 }
+
+
+/** Machine-readable error code emitted by backend BusinessError (e.g. 'over_budget'). */
+export function apiErrorCode(err: unknown): string | null {
+    if (isAxiosError(err)) {
+        const code = (err.response?.data as Record<string, unknown> | undefined)?.code;
+        if (typeof code === 'string') return code;
+    }
+    return null;
+}

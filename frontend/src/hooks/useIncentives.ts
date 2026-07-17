@@ -31,7 +31,7 @@ function useInvalidate() {
 
 // ── schemes ─────────────────────────────────────────────────────────────────
 
-export function useSchemes(params?: { entity_type?: string; include_inactive?: boolean }) {
+export function useSchemes(params?: { entity_type?: string; include_inactive?: boolean; page_size?: number }) {
   return useQuery({
     queryKey: incentiveKeys.schemes(params),
     queryFn: () => incentiveService.listSchemes(params),
@@ -111,56 +111,6 @@ export function usePayoutRuns(params?: RunListParams) {
   });
 }
 
-const RUN_MUTATION_INVALIDATES: string[][] = [
-  ['incentives', 'runs'],
-  ['incentives', 'payouts'],
-  ['incentives', 'payout-summary'],
-  ['achievements', 'dashboard'],
-];
-
-export function useComputeRun() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: ({ schemeId, periodId }: { schemeId: number; periodId: number }) =>
-      incentiveService.computeRun(schemeId, periodId),
-    onSuccess: () => invalidate(...RUN_MUTATION_INVALIDATES),
-  });
-}
-
-export function useSubmitRun() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (id: number) => incentiveService.submitRun(id),
-    onSuccess: () => invalidate(...RUN_MUTATION_INVALIDATES),
-  });
-}
-
-export function useApproveRun() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (id: number) => incentiveService.approveRun(id),
-    onSuccess: () => invalidate(...RUN_MUTATION_INVALIDATES),
-  });
-}
-
-export function useRejectRun() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
-      incentiveService.rejectRun(id, reason),
-    onSuccess: () => invalidate(...RUN_MUTATION_INVALIDATES),
-  });
-}
-
-export function useMarkRunPaid() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: ({ id, paymentRef }: { id: number; paymentRef: string }) =>
-      incentiveService.markRunPaid(id, paymentRef),
-    onSuccess: () => invalidate(...RUN_MUTATION_INVALIDATES),
-  });
-}
-
 // ── payouts ─────────────────────────────────────────────────────────────────
 
 export function usePayouts(params?: PayoutListParams, enabled = true) {
@@ -236,13 +186,6 @@ export function useRejectException() {
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       incentiveService.rejectException(id, reason),
     onSuccess: () => invalidate(...EXCEPTION_INVALIDATES),
-  });
-}
-
-export function useSipStructures() {
-  return useQuery({
-    queryKey: ['incentives', 'sip-structures'] as const,
-    queryFn: () => incentiveService.sipStructures(),
   });
 }
 

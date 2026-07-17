@@ -84,6 +84,9 @@ export default function PayoutBreakdownPage() {
   const prorated = parseFloat(payout.proration_factor) < 1;
   const gatekeeperZeroed = payout.gatekeeper_status === 'failed' &&
     payout.total_payout !== payout.gross_payout;
+  // A cycle-attached final run rests at 'computed' only while its cycle is under review;
+  // hold/release are refused by the API in any other state.
+  const underReview = payout.run_status === 'computed';
 
   return (
     <div className="p-6">
@@ -98,13 +101,15 @@ export default function PayoutBreakdownPage() {
           <Button variant="outline" size="sm" icon={<Download size={14} />} onClick={downloadStatement}>
             Statement
           </Button>
-          {isOperator && payout.hold_status !== 'held' && (
+          {/* Hold/release are only accepted while the cycle is under review — its final
+              runs sit at 'computed' exactly then (approved/paid = past the review gate). */}
+          {isOperator && underReview && payout.hold_status !== 'held' && (
             <Button variant="outline" size="sm" icon={<Ban size={14} />}
                     onClick={() => { setHoldReason(''); setHolding(true); }}>
               Hold
             </Button>
           )}
-          {isOperator && payout.hold_status === 'held' && (
+          {isOperator && underReview && payout.hold_status === 'held' && (
             <Button variant="outline" size="sm" icon={<RotateCcw size={14} />} loading={releasePayout.isPending}
                     onClick={() => releasePayout.mutate(payout.id, {
                       onSuccess: () => notify.success('Payout released'),

@@ -5,7 +5,7 @@ import { useEntitySearch } from '../../hooks/useEntities';
 import { useRBAC } from '../../hooks/useRBAC';
 import {
   useApproveException, useCreateException, useExceptionCategories, usePayoutExceptions,
-  useRejectException, useSchemes, useWithdrawException,
+  useRejectException, useScheme, useSchemes, useWithdrawException,
 } from '../../hooks/useIncentives';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -30,10 +30,16 @@ import type {
 } from '../../types/incentive';
 
 const ACTION_OPTIONS: { value: KpiExceptionAction; label: string }[] = [
-  { value: 'actual_performance', label: 'Actual performance' },
-  { value: 'default_1x', label: 'Default to 1×' },
-  { value: 'zero', label: 'Zero' },
+  { value: 'actual_performance', label: 'Compute normally' },
+  { value: 'default_1x', label: 'Pay as if on target (1×)' },
+  { value: 'zero', label: 'Pay nothing' },
 ];
+
+const ACTION_PHRASES: Record<KpiExceptionAction, string> = {
+  actual_performance: 'computed normally',
+  default_1x: 'paid as if exactly on target (1×)',
+  zero: 'not paid',
+};
 
 const STATUS_FILTERS: { value: '' | ExceptionStatus; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -276,14 +282,25 @@ function RaiseModal({ open, onClose, periodId }: { open: boolean; onClose: () =>
   const [salesAction, setSalesAction] = useState<KpiExceptionAction>('actual_performance');
   const [executionAction, setExecutionAction] = useState<KpiExceptionAction>('actual_performance');
   const [gatekeeperExempt, setGatekeeperExempt] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [reason, setReason] = useState('');
   const [referenceDate, setReferenceDate] = useState('');
 
   const { data: matches } = useEntitySearch(query);
   const { data: schemesResp } = useSchemes();
+  const { data: schemeDetail } = useScheme(schemeId);
   const { data: catResp } = useExceptionCategories();
   const create = useCreateException();
   const categories = catResp?.results ?? [];
+
+  // Name the invisible classification: which of the scheme's KPIs sit in each bucket.
+  const kpiNames = (cat: 'sales' | 'execution') =>
+    (schemeDetail?.kpis ?? [])
+      .filter((k) => k.incentive_category === cat)
+      .map((k) => k.kpi_name)
+      .join(', ');
+  const salesNames = kpiNames('sales');
+  const executionNames = kpiNames('execution');
 
   const selectedCat = categories.find((c) => c.code === category);
   const needsDate = Boolean(
@@ -314,7 +331,7 @@ function RaiseModal({ open, onClose, periodId }: { open: boolean; onClose: () =>
   const reset = () => {
     setQuery(''); setEntityId(null); setEntityLabel(''); setSchemeId(null); setCategory('');
     setSalesAction('actual_performance'); setExecutionAction('actual_performance');
-    setGatekeeperExempt(false); setReason(''); setReferenceDate('');
+    setGatekeeperExempt(false); setShowAdvanced(false); setReason(''); setReferenceDate('');
   };
 
   const save = () => {
@@ -383,14 +400,57 @@ function RaiseModal({ open, onClose, periodId }: { open: boolean; onClose: () =>
                             ...categories.map((c) => ({ value: c.code, label: c.name }))]} />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Select label="Sales KPIs" value={salesAction}
-                  onChange={(e) => setSalesAction(e.target.value as KpiExceptionAction)}
-                  options={ACTION_OPTIONS} />
-          <Select label="Execution KPIs" value={executionAction}
-                  onChange={(e) => setExecutionAction(e.target.value as KpiExceptionAction)}
-                  options={ACTION_OPTIONS} />
-        </div>
+        {category === '' && !showAdvanced && (
+          <p className="text-xs text-gray-500">
+            Pick a reason above to apply its standard treatment — or{' '}
+            <button type="button" className="font-medium text-primary underline underline-offset-2"
+                    onClick={() => setShowAdvanced(true)}>
+              set the treatment manually
+            </button>.
+          </p>
+        )}
+
+        {category !== '' && (
+          <div className="space-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-blue-500">
+              What this exception does
+            </p>
+            <p>
+              <strong>Sales KPIs</strong>{salesNames ? ` (${salesNames})` : ''} — {ACTION_PHRASES[salesAction]}.
+            </p>
+            <p>
+              <strong>Execution KPIs</strong>{executionNames ? ` (${executionNames})` : ''} — {ACTION_PHRASES[executionAction]}.
+            </p>
+            <p>
+              <strong>Gate criteria</strong> — {gatekeeperExempt ? 'waived for this person' : 'still apply'}.
+            </p>
+            {!showAdvanced && (
+              <button type="button"
+                      className="pt-1 text-xs font-medium text-blue-700 underline underline-offset-2"
+                      onClick={() => setShowAdvanced(true)}>
+                Adjust manually
+              </button>
+            )}
+          </div>
+        )}
+
+        {showAdvanced && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <Select label={`Sales KPIs${salesNames ? ` — ${salesNames}` : ''}`} value={salesAction}
+                      onChange={(e) => setSalesAction(e.target.value as KpiExceptionAction)}
+                      options={ACTION_OPTIONS} />
+              <Select label={`Execution KPIs${executionNames ? ` — ${executionNames}` : ''}`} value={executionAction}
+                      onChange={(e) => setExecutionAction(e.target.value as KpiExceptionAction)}
+                      options={ACTION_OPTIONS} />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="h-4 w-4 accent-primary"
+                     checked={gatekeeperExempt} onChange={(e) => setGatekeeperExempt(e.target.checked)} />
+              Exempt from the gate criteria
+            </label>
+          </>
+        )}
 
         {needsDate && (
           <div className="w-56">
@@ -408,12 +468,6 @@ function RaiseModal({ open, onClose, periodId }: { open: boolean; onClose: () =>
         {needsDate && coveredMonths === null && (
           <p className="text-xs text-gray-500">Set the date to see how many months this covers.</p>
         )}
-
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" className="h-4 w-4 accent-primary"
-                 checked={gatekeeperExempt} onChange={(e) => setGatekeeperExempt(e.target.checked)} />
-          Exempt from the gate criteria
-        </label>
 
         <Textarea label="Reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
                   placeholder="What happened, with dates — approvers and auditors read this" />

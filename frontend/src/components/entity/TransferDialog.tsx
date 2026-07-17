@@ -92,10 +92,10 @@ export function TransferDialog({entity, onClose}: Props) {
                 : 'Choose the new manager to see a summary.');
         } else {
             parts.push(vacantSeat
-                ? `${entity.name} fills the open role “${vacantSeat.name}”.`
-                : 'Choose the open role to see a summary.');
+                ? `${entity.name} fills the open position “${vacantSeat.name}”.`
+                : 'Choose the open position to see a summary.');
             if (seatTerritories.length > 0) {
-                parts.push(`They take over ${seatTerritories.map((t) => t.code).join(', ')} — those areas come with the role.`);
+                parts.push(`They take over ${seatTerritories.map((t) => t.code).join(', ')} — those areas come with the position.`);
             }
         }
         if (territories.length > 0) {
@@ -149,7 +149,7 @@ export function TransferDialog({entity, onClose}: Props) {
             {id: entity.id, payload},
             {
                 onSuccess: () => {
-                    notify.success(`${entity.name} was transferred. Everything moved together — role, areas and team handling.`);
+                    notify.success(`${entity.name} was transferred. Everything moved together — position, areas and team handling.`);
                     onClose();
                 },
                 onError: (e) => notify.error(apiErrorMessage(e, 'We couldn’t finish this transfer. Check the choices above and try again.')),
@@ -181,7 +181,7 @@ export function TransferDialog({entity, onClose}: Props) {
                         onClick={() => setOp('transfer')}
                         icon={<UserCog className="h-4 w-4"/>}
                         title="Move this person"
-                        subtitle="They take a new role — their team stays where it is"
+                        subtitle="Same job, new place — their team stays where it is"
                     />
                     <OpCard
                         active={op === 'move'}
@@ -216,14 +216,14 @@ export function TransferDialog({entity, onClose}: Props) {
                             <OpCard
                                 active={destination === 'new_seat'}
                                 onClick={() => setDestination('new_seat')}
-                                title="Set up a new role"
+                                title="Set up a new position"
                                 subtitle="Place them under a new manager"
                             />
                             <OpCard
                                 active={destination === 'occupy_vacant'}
                                 onClick={() => setDestination('occupy_vacant')}
-                                title="Fill an open role"
-                                subtitle="Move them into a role that’s currently empty"
+                                title="Fill an open position"
+                                subtitle="Take over a position that’s currently empty"
                             />
                         </div>
 
@@ -238,7 +238,7 @@ export function TransferDialog({entity, onClose}: Props) {
                             </Field>
                         ) : (
                             <>
-                                <Field label="Which open role?" hint={`Showing open ${entity.entity_type.name} roles`}>
+                                <Field label="Which open position?" hint={`Showing open ${entity.entity_type.name} positions`}>
                                     <VacantSeatSearch
                                         typeCode={entity.entity_type.code}
                                         value={vacantSeat}
@@ -247,7 +247,7 @@ export function TransferDialog({entity, onClose}: Props) {
                                 </Field>
                                 {seatTerritories.length > 0 && (
                                     <Notice tone="blue" icon={<MapPin className="mt-0.5 h-4 w-4 shrink-0"/>}>
-                                        This role already looks after{' '}
+                                        This position already looks after{' '}
                                         <strong>{seatTerritories.map((t) => t.name).join(', ')}</strong> —{' '}
                                         {entity.name} will take those over automatically.
                                     </Notice>
@@ -315,16 +315,21 @@ export function TransferDialog({entity, onClose}: Props) {
                 {/* 4 — Review */}
                 <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-sm text-gray-700">
-                        <span className="font-medium">From</span>{' '}
+                        <span className="font-medium">Handover date</span>{' '}
                         <input
                             type="date"
                             value={effectiveDate}
                             onChange={(e) => setEffectiveDate(e.target.value)}
-                            aria-label="Effective date"
+                            aria-label="Handover date"
                             className="mx-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-sm
                                focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                         />{' '}
                         — {summary}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                        Sales in any handed-over areas count for the current owner until this date,
+                        and for the new owner from this date. Usually today — change it only if the
+                        handover really happens on a different day.
                     </p>
                     <Textarea
                         label="Reason for this change"
@@ -386,7 +391,7 @@ function Notice({tone, icon, children}: {tone: 'amber' | 'blue'; icon: ReactNode
     );
 }
 
-/** Search the open roles (no one assigned yet) of the same kind. */
+/** Search the open positions (no one assigned yet) of the same kind. */
 function VacantSeatSearch({typeCode, value, onChange}: {
     typeCode: string;
     value: EntityListItem | null;
@@ -408,7 +413,7 @@ function VacantSeatSearch({typeCode, value, onChange}: {
                     type="button"
                     onClick={() => onChange(null)}
                     className="ml-2 shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
-                    aria-label="Clear selected role"
+                    aria-label="Clear selected position"
                 >
                     <X className="h-4 w-4"/>
                 </button>
@@ -420,7 +425,7 @@ function VacantSeatSearch({typeCode, value, onChange}: {
         <div className="relative w-full">
             <input
                 type="text"
-                placeholder="Search open roles by name…"
+                placeholder="Search open positions by name…"
                 value={q}
                 onChange={(e) => {
                     setQ(e.target.value);
@@ -437,7 +442,7 @@ function VacantSeatSearch({typeCode, value, onChange}: {
                         <div className="flex justify-center py-2"><Spinner size="sm"/></div>
                     )}
                     {!isLoading && vacant.length === 0 && (
-                        <p className="px-3 py-2 text-sm text-gray-400">No open roles found.</p>
+                        <p className="px-3 py-2 text-sm text-gray-400">No open positions found.</p>
                     )}
                     {vacant.map((r) => (
                         <button

@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { Inbox, UserCheck } from 'lucide-react';
 import { useRBAC } from '../../hooks/useRBAC';
 import {
-  useApproveStep, useBulkApprove, useBulkReject, usePendingApprovals,
+  useApproveStep, useBulkApprove, useBulkReject, useDelegations, usePendingApprovals,
   useRejectStep, useWorkflowInstance,
 } from '../../hooks/useWorkflows';
+import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -20,10 +21,10 @@ import {TableSkeleton} from '../../components/ui/Skeleton';
 import { StatCard } from '../../components/data/StatCard';
 import { ApprovalCard } from '../../components/workflow/ApprovalCard';
 import { ApprovalTimeline } from '../../components/workflow/ApprovalTimeline';
-import { DelegationsDialog } from '../../components/workflow/DelegationsDialog';
+import { DelegationsDialog, isActiveNow } from '../../components/workflow/DelegationsDialog';
 import { BulkActionBar } from '../../components/workflow/BulkActionBar';
 import { WorkflowStepper } from '../../components/workflow/WorkflowStepper';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDate } from '../../utils/format';
 import { notify } from '../../utils/notify';
 import { apiErrorMessage } from '../../utils/apiError';
 import type { PendingApproval } from '../../types/workflow';
@@ -43,6 +44,11 @@ export default function WorkflowsPendingPage() {
   const [delegationsOpen, setDelegationsOpen] = useState(false);
 
   const { data: resp, isLoading } = usePendingApprovals({ page });
+  const { data: delegationsResp } = useDelegations();
+  const me = useAuthStore((s) => s.user);
+  const activeCover = (delegationsResp?.results ?? []).filter(isActiveNow);
+  const myCover = activeCover.filter((d) => d.delegator === me?.id);
+  const coveringFor = activeCover.filter((d) => d.delegate === me?.id && d.delegator !== me?.id);
   const approve = useApproveStep();
   const reject = useRejectStep();
   const bulkApproveM = useBulkApprove();
@@ -105,10 +111,36 @@ export default function WorkflowsPendingPage() {
           actions={
             <Button variant="secondary" icon={<UserCheck className="h-4 w-4" />}
                     onClick={() => setDelegationsOpen(true)}>
-              Delegations
+              Out of office
             </Button>
           }
       />
+
+      {myCover.length > 0 && (
+        <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+          {myCover.map((d) => (
+            <p key={d.id}>
+              <span className="font-medium">{d.delegate_name ?? `User #${d.delegate}`}</span>
+              {' '}can act on your approvals until {formatDate(d.end_date)}.{' '}
+              <button type="button" className="font-medium underline underline-offset-2"
+                      onClick={() => setDelegationsOpen(true)}>
+                Manage
+              </button>
+            </p>
+          ))}
+        </div>
+      )}
+      {coveringFor.length > 0 && (
+        <div className="mb-3 rounded-lg border border-purple-100 bg-purple-50 px-4 py-2.5 text-sm text-purple-900">
+          {coveringFor.map((d) => (
+            <p key={d.id}>
+              You're covering for{' '}
+              <span className="font-medium">{d.delegator_name ?? `User #${d.delegator}`}</span>
+              {' '}until {formatDate(d.end_date)} — their pending approvals appear in this list too.
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatCard label="Awaiting you" value={String(resp?.count ?? 0)} borderColor="amber" />

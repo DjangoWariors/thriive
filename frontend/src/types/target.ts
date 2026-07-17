@@ -370,7 +370,10 @@ export interface GapBoard {
   tasks_open: number;
   by_level: Record<string, Record<ReviewStatus, number>>;
   kpis: { kpi: string; top_down: string; bottom_up: string; gap: string }[];
-  top_movers: { geography_node: string; kpi: string; top_down: string; current: string; delta: string }[];
+  top_movers: {
+    geography_node: string; geography_node_code: string;
+    kpi: string; top_down: string; current: string; delta: string;
+  }[];
 }
 
 export interface CostPreview {

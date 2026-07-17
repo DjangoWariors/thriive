@@ -15,11 +15,19 @@ export function makeUnitFormatter(unit?: string, decimalPlaces?: number) {
     const digits = currency ? 0 : Math.min(decimalPlaces ?? 0, 4);
     return (value: string | null): string => {
         if (value === null || value === '') return '—';
-        const text = Number(value).toLocaleString('en-IN', {
+        const num = Number(value);
+        const text = Math.abs(num).toLocaleString('en-IN', {
             minimumFractionDigits: 0, maximumFractionDigits: digits,
         });
-        return currency ? `₹${text}` : text;
+        // Sign before the ₹ — "−₹3", never "₹-3".
+        return `${num < 0 ? '-' : ''}${currency ? `₹${text}` : text}`;
     };
+}
+
+/** Plain Indian-locale integer for plan numbers; '-' when the value is missing. */
+export function formatInr(value: string | null | undefined): string {
+    if (value === null || value === undefined || value === '') return '-';
+    return Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
 export function formatPct(value: number | string, decimals = 2): string {

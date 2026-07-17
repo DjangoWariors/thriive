@@ -20,6 +20,7 @@ import {SimpleTable} from '../../components/ui/SimpleTable';
 import {notify} from '../../utils/notify';
 import {apiErrorMessage} from '../../utils/apiError';
 import type {Assignment, AssignmentRole} from '../../types/assignment';
+import {TERRITORY_ROLES_ENABLED} from '../../config/features';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const PAGE_SIZE = 50;
@@ -102,19 +103,21 @@ export default function OwnersPage() {
                         leftIcon={<Search className="h-4 w-4"/>}
                     />
                 </div>
-                <div className="w-40">
-                    <Select
-                        label="Role"
-                        value={role}
-                        onChange={(e) => setFilter(() => setRole(e.target.value as '' | AssignmentRole))}
-                        options={[
-                            {value: '', label: 'All roles'},
-                            {value: 'owner', label: 'Owner'},
-                            {value: 'stand_in', label: 'Stand-in'},
-                            {value: 'supervisor', label: 'Supervisor'},
-                        ]}
-                    />
-                </div>
+                {TERRITORY_ROLES_ENABLED && (
+                    <div className="w-56">
+                        <Select
+                            label="Role in territory"
+                            value={role}
+                            onChange={(e) => setFilter(() => setRole(e.target.value as '' | AssignmentRole))}
+                            options={[
+                                {value: '', label: 'All roles'},
+                                {value: 'owner', label: 'Owner — credited with sales'},
+                                {value: 'stand_in', label: 'Stand-in — temporary cover'},
+                                {value: 'supervisor', label: 'Supervisor — oversight only'},
+                            ]}
+                        />
+                    </div>
+                )}
                 <label className="flex items-center gap-2 pb-2 text-sm">
                     <input
                         type="checkbox"
@@ -156,12 +159,12 @@ export default function OwnersPage() {
                                     <div className="text-xs text-gray-500">{a.scope.code} · {a.scope.level}</div>
                                 </>
                             )},
-                            {header: (
+                            ...(TERRITORY_ROLES_ENABLED ? [{header: (
                                 <span className="inline-flex items-center gap-1">
                                     Role
                                     <InfoTooltip content="Owner = the person credited with the territory's sales. Stand-in = a temporary fill-in. Supervisor = oversees but isn't credited."/>
                                 </span>
-                            ), render: (a) => <Badge>{a.role_in_scope.replace('_', '-')}</Badge>},
+                            ), render: (a: Assignment) => <Badge>{a.role_in_scope.replace('_', '-')}</Badge>}] : []),
                             {header: 'From', render: (a) => <>{a.effective_from}</>},
                             {header: 'To', render: (a) => (
                                 <>{a.effective_to ?? <span className="text-green-600">still going</span>}</>

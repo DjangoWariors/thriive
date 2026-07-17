@@ -20,7 +20,7 @@ import {EXTERNAL_METRICS_ENABLED} from '../../config/features';
 
 const SOURCES = [
   { value: 'contribution', label: 'Historical contribution' },
-  { value: 'attribute', label: 'Geography attribute (e.g. outlet_count)' },
+  //{ value: 'attribute', label: 'Geography attribute (e.g. outlet_count)' },
   ...(EXTERNAL_METRICS_ENABLED
     ? [
         {

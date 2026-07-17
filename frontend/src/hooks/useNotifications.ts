@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationService } from '../services/notificationService';
-import type { NotificationPrefs } from '../types/settings';
 
 export function useUnreadCount() {
   return useQuery({
@@ -30,19 +29,4 @@ export function useMarkRead() {
 export function useMarkAllRead() {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: () => notificationService.markAllRead(), onSuccess: invalidate });
-}
-
-export function useNotificationPrefs() {
-  return useQuery({
-    queryKey: ['notifications', 'preferences'],
-    queryFn: () => notificationService.getPreferences(),
-  });
-}
-
-export function useUpdateNotificationPrefs() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (prefs: NotificationPrefs) => notificationService.updatePreferences(prefs),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications', 'preferences'] }),
-  });
 }

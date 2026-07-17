@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  AlertTriangle, CalendarDays, ClipboardCheck, Crosshair, GitBranchPlus, Plus, ShieldCheck,
-  SlidersHorizontal, Users,
+  AlertTriangle, CalendarDays, ChevronRight, ClipboardCheck, Crosshair, GitBranchPlus, Plus,
+  ShieldCheck, SlidersHorizontal, Users, type LucideIcon,
 } from 'lucide-react';
 import { usePeriodTree, usePlanYears, usePlans, usePersonView, useReviewTasks } from '../../hooks/useTargets';
 import { useKpiDefinitions } from '../../hooks/useKpi';
@@ -34,24 +34,18 @@ export default function TargetsPage() {
   const { canWrite } = useRBAC();
   const writable = canWrite('target_management');
   const isAdmin = writable && !user?.entity_info;
-  const [tab, setTab] = useState<'plans' | 'person'>('plans');
+  const [tab, setTab] = useState<'plans' | 'person' | 'setup'>('plans');
 
   return (
     <div className="p-6">
       <PageHeader
         className="mb-5"
         title="Target plans"
-        description="Each plan is one monthly exercise: baseline → top number → split → review → publish. Targets live on territories; every person's number is derived from what they own."
+        description="Each plan is one monthly exercise: top number → split → review → publish. Targets live on territories; every person's number is derived from what they own."
         actions={isAdmin && (
           <>
             <Button variant="outline" icon={<CalendarDays className="h-4 w-4" />} onClick={() => navigate('/targets/periods')}>
               Planning calendar
-            </Button>
-            <Button variant="outline" icon={<ShieldCheck className="h-4 w-4" />} onClick={() => navigate('/targets/revision-policies')}>
-              Change caps
-            </Button>
-            <Button variant="outline" icon={<SlidersHorizontal className="h-4 w-4" />} onClick={() => navigate('/targets/recipes')}>
-              Split recipes
             </Button>
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/targets/new')}>New plan</Button>
           </>
@@ -60,12 +54,49 @@ export default function TargetsPage() {
 
       {!isAdmin && <MyReviews onOpen={(planId) => navigate(`/targets/${planId}`)} />}
 
-      <Tabs className="mb-4" activeTab={tab} onChange={(v) => setTab(v as 'plans' | 'person')}
-            tabs={[{ value: 'plans', label: 'Plans' }, { value: 'person', label: 'By person' }]} />
+      <Tabs className="mb-4" activeTab={tab} onChange={(v) => setTab(v as 'plans' | 'person' | 'setup')}
+            tabs={[{ value: 'plans', label: 'Plans' }, { value: 'person', label: 'By person' },
+                   ...(isAdmin ? [{ value: 'setup', label: 'Setup' }] : [])]} />
 
       {tab === 'plans'
         ? <PlanList isAdmin={isAdmin} onOpen={(id) => navigate(`/targets/${id}`)} onNew={() => navigate('/targets/new')} />
-        : <TeamView onOpenCalendar={isAdmin ? () => navigate('/targets/periods') : undefined} />}
+        : tab === 'person'
+          ? <TeamView onOpenCalendar={isAdmin ? () => navigate('/targets/periods') : undefined} />
+          : <SetupTab onNavigate={navigate} />}
+    </div>
+  );
+}
+
+// ── setup (rarely-touched configuration) ──────────────────────────────────────
+function SetupTab({ onNavigate }: { onNavigate: (path: string) => void }) {
+  const cards: { icon: LucideIcon; title: string; body: string; path: string }[] = [
+    {
+      icon: CalendarDays, title: 'Planning calendar', path: '/targets/periods',
+      body: 'The fiscal years and months plans anchor to. Generate a whole plan year in one go.',
+    },
+    {
+      icon: SlidersHorizontal, title: 'Split recipes', path: '/targets/recipes',
+      body: 'How system numbers are blended — the weight components, growth and rounding a split uses.',
+    },
+    {
+      icon: ShieldCheck, title: 'Change caps', path: '/targets/revision-policies',
+      body: 'Who may move a number, and by how much — auto-approve bands, hard ceilings, freezes.',
+    },
+  ];
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      {cards.map((c) => (
+        <button key={c.path} type="button" onClick={() => onNavigate(c.path)} className="text-left">
+          <Card className="h-full transition-shadow hover:shadow-md">
+            <div className="flex items-start justify-between gap-2">
+              <c.icon className="h-5 w-5 text-primary" />
+              <ChevronRight className="h-4 w-4 text-gray-300" />
+            </div>
+            <p className="mt-3 font-semibold text-gray-900">{c.title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">{c.body}</p>
+          </Card>
+        </button>
+      ))}
     </div>
   );
 }

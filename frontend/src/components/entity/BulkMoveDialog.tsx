@@ -17,9 +17,6 @@ export function BulkMoveDialog({ids, onClose, onDone}: Props) {
     const [searchQ, setSearchQ] = useState('');
     const [newParent, setNewParent] = useState<EntityListItem | null>(null);
     const [reason, setReason] = useState('');
-    const [effectiveDate, setEffectiveDate] = useState(
-        new Date().toISOString().split('T')[0] as string,
-    );
     const [errors, setErrors] = useState<BulkOpResult['errors']>([]);
 
     const moveMutation = useBulkMoveEntities();
@@ -36,7 +33,9 @@ export function BulkMoveDialog({ids, onClose, onDone}: Props) {
                 entity_ids: ids,
                 new_parent_id: newParent.id,
                 reason: reason.trim(),
-                effective_date: effectiveDate,
+                // The move applies immediately; the audit trail records today as the
+                // effective date. (Field hidden from users deliberately.)
+                effective_date: new Date().toISOString().split('T')[0] as string,
             },
             {
                 onSuccess: (res) => {
@@ -126,17 +125,6 @@ export function BulkMoveDialog({ids, onClose, onDone}: Props) {
                     onChange={(e) => setReason(e.target.value)}
                     rows={2}
                 />
-
-                <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">When does this start?</label>
-                    <input
-                        type="date"
-                        value={effectiveDate}
-                        onChange={(e) => setEffectiveDate(e.target.value)}
-                        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm
-                       focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                </div>
 
                 {errors && errors.length > 0 && (
                     <div className="rounded-lg bg-danger-50 px-4 py-3">

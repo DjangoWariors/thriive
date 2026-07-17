@@ -470,6 +470,11 @@ function ReviewBoard({ cycle, review, isApprover, isOperator, isOwnSubmission,
           <h3 className="font-medium text-gray-900">Review</h3>
           {cycle.submitted_by_name && <span className="text-xs text-gray-500">submitted by {cycle.submitted_by_name}</span>}
           {cycle.approved_by_name && <span className="text-xs text-gray-500">· approved by {cycle.approved_by_name}</span>}
+          {isOwnSubmission && cycle.status === 'under_review' && (
+            <span className="text-xs font-medium text-amber-600">
+              You submitted this cycle — a different reviewer must approve it (four-eyes rule).
+            </span>
+          )}
           <div className="ml-auto flex gap-2">
             {isOperator && cycle.status === 'under_review' && cycle.submitted_by === null && (
               <Button size="sm" icon={<SendHorizonal size={14} />} onClick={onSubmit}>Submit</Button>

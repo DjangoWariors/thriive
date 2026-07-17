@@ -211,7 +211,8 @@ class ReviewService:
             .select_related('geography_node', 'kpi')
         )
         deltas = sorted(
-            ({'geography_node': m.geography_node.code, 'kpi': m.kpi.code,
+            ({'geography_node': m.geography_node.name, 'geography_node_code': m.geography_node.code,
+              'kpi': m.kpi.code,
               'top_down': str(m.original_target_value), 'current': str(m.effective),
               'delta': str(m.effective - m.original_target_value)} for m in movers),
             key=lambda d: abs(float(d['delta'])), reverse=True,

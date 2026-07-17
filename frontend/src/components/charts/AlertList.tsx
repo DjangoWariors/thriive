@@ -15,11 +15,17 @@ const SEVERITY = {
 interface AlertListProps {
   alerts: DashboardAlert[];
   onAcknowledge?: (id: number) => void;
+  onAcknowledgeAll?: () => void;
 }
 
-export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
+export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertListProps) {
   return (
-    <Card title="Alerts" subtitle="Target-at-risk, no-sale & coverage signals" padding="none">
+    <Card title="Alerts" subtitle="Target-at-risk, no-sale & coverage signals" padding="none"
+          actions={onAcknowledgeAll && alerts.length > 1 ? (
+            <Button variant="ghost" size="sm" onClick={onAcknowledgeAll}>
+              Mark all as seen
+            </Button>
+          ) : undefined}>
       {alerts.length === 0 ? (
         <EmptyState icon={Info} title="No open alerts" description="Everything is on track." />
       ) : (
@@ -38,7 +44,10 @@ export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
                   <p className="truncate text-xs text-gray-500">{a.message}</p>
                 </div>
                 {onAcknowledge && (
-                  <Button variant="ghost" size="sm" onClick={() => onAcknowledge(a.id)}>Ack</Button>
+                  <Button variant="ghost" size="sm" onClick={() => onAcknowledge(a.id)}
+                          title="Mark as seen — it stays in the register and resolves on its own when the number recovers">
+                    Mark as seen
+                  </Button>
                 )}
               </div>
             );

@@ -869,7 +869,7 @@ class PayoutService:
         )
         if scheme.channel_id:
             entities = entities.filter(channel_id=scheme.channel_id)
-        entities = list(entities.only('id'))
+        entities = list(entities.only('id', 'name'))
         entity_ids = [e.pk for e in entities]
 
         # Bulk-load inputs
@@ -894,7 +894,8 @@ class PayoutService:
         for entity in entities:
             vp = vp_map.get(entity.pk)
             if vp is None:
-                errors.append({'entity_id': entity.pk, 'code': 'no_variable_pay',
+                errors.append({'entity_id': entity.pk, 'entity_name': entity.name,
+                               'code': 'no_variable_pay',
                                'error': 'No variable pay configured for this period.'})
                 continue
             exc = exception_map.get(entity.pk)
@@ -1381,6 +1382,8 @@ class PayoutCycleService:
 
     @staticmethod
     def _check_variable_pay(period) -> dict:
+        from apps.hierarchy.models import Node
+
         eligible = PayoutCycleService._eligible_entity_ids(period)
 
         if not eligible:
@@ -1390,14 +1393,19 @@ class PayoutCycleService:
         have = set(VariablePay.objects.filter(
             target_period=period, entity_id__in=eligible, is_active=True,
         ).values_list('entity_id', flat=True))
-        missing = len(eligible - have)
-        print(eligible)
-        print(have)
-        status = 'red' if missing else 'green'
-
-        return _check('variable_pay', 'Variable pay loaded', status, missing,
-                      f'{missing} of {len(eligible)} eligible entities have no variable pay.'
-                      if missing else f'All {len(eligible)} eligible entities covered.')
+        missing_ids = eligible - have
+        status = 'red' if missing_ids else 'green'
+        if not missing_ids:
+            return _check('variable_pay', 'Variable pay loaded', status, 0,
+                          f'All {len(eligible)} eligible entities covered.')
+        # Name the gap — "1 missing" isn't actionable, "Manoj Pillai" is.
+        names = list(Node.objects.filter(pk__in=missing_ids)
+                     .order_by('name').values_list('name', flat=True)[:5])
+        listed = ', '.join(names) + (f' +{len(missing_ids) - len(names)} more'
+                                     if len(missing_ids) > len(names) else '')
+        return _check('variable_pay', 'Variable pay loaded', status, len(missing_ids),
+                      f'{len(missing_ids)} of {len(eligible)} eligible entities have no '
+                      f'variable pay: {listed}.')
 
     @staticmethod
     def _check_achievements_fresh(period) -> dict:

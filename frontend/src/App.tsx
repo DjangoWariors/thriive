@@ -43,7 +43,6 @@ const AchievementsPage = lazy(() => import('./routes/achievements/dashboard'));
 const AchievementDrilldownPage = lazy(() => import('./routes/achievements/drilldown'));
 const AlertRulesPage = lazy(() => import('./routes/achievements/alert-rules'));
 const SchemesPage = lazy(() => import('./routes/incentives/schemes'));
-const SipStructuresPage = lazy(() => import('./routes/incentives/sip-structures'));
 const SchemeBuilderPage = lazy(() => import('./routes/incentives/scheme-builder'));
 const VariablePayPage = lazy(() => import('./routes/incentives/variable-pay'));
 const PayoutSummaryPage = lazy(() => import('./routes/incentives/payout-summary'));
@@ -212,7 +211,7 @@ function App() {
 
                             <Route element={<RequirePermission permission="scheme_management"/>}>
                                 <Route path="/incentives/schemes" element={<SchemesPage/>}/>
-                                <Route path="/incentives/sip-structures" element={<SipStructuresPage/>}/>
+                                <Route path="/incentives/sip-structures" element={<Navigate to="/incentives/schemes" replace/>}/>
                                 <Route path="/incentives/schemes/builder" element={<SchemeBuilderPage/>}/>
                                 <Route path="/incentives/schemes/builder/:id" element={<SchemeBuilderPage/>}/>
                                 <Route path="/incentives/variable-pay" element={<VariablePayPage/>}/>
