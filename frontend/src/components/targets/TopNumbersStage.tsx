@@ -53,8 +53,8 @@ export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }:
         <div>
           <h3 className="text-sm font-semibold text-gray-800">Top numbers</h3>
           <p className="mt-0.5 text-xs text-gray-500">
-            Set the number each KPI cascades from. The suggestion (last year's history × growth)
-            is your sanity anchor — you can type any number.
+            Set the number each KPI cascades from. The suggestion (recent history × growth,
+            per each KPI's baseline) is your sanity anchor — you can type any number.
           </p>
         </div>
         {editable && (
@@ -79,7 +79,8 @@ export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }:
                        : 'Calculate a suggestion, or type the AOP number directly'} />
             </div>
             {editable && (
-              <Button variant="outline" size="sm" loading={setTop.isPending}
+              <Button variant="outline" size="sm"
+                      loading={setTop.isPending && setTop.variables?.kpiId === k.kpi}
                       disabled={!(values[k.kpi] ?? k.top_value)}
                       onClick={() => setTop.mutate(
                         { id: plan.id, kpiId: k.kpi, value: values[k.kpi] ?? trimZeros(k.top_value) },

@@ -326,6 +326,8 @@ export interface PayoutDetail {
   total_multiplier: string;
   hold_status: HoldStatus;
   hold_reason: string;
+  can_hold: boolean;
+  can_release: boolean;
   adjustment_amount: string;
   computation_id: number | null;
   computed_at: string;

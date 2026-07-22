@@ -1557,6 +1557,22 @@ class PayoutCycleService:
 
     # ── per-payee hold / release (pre-disbursement) ──────────────────────────
     @staticmethod
+    def can_hold(payout: Payout) -> bool:
+        """Whether ``hold_payout`` would be accepted now — the single source of truth the
+        UI reads so it never offers a hold the API will refuse. Mirrors the guards below."""
+        cycle = payout.run.cycle
+        return (cycle is not None and cycle.status == PayoutCycle.UNDER_REVIEW
+                and payout.run.kind == PayoutRun.FINAL
+                and payout.hold_status != Payout.HOLD_HELD)
+
+    @staticmethod
+    def can_release(payout: Payout) -> bool:
+        """Whether ``release_payout`` would be accepted now (mirrors the guards below)."""
+        cycle = payout.run.cycle
+        return (cycle is not None and cycle.status == PayoutCycle.UNDER_REVIEW
+                and payout.hold_status == Payout.HOLD_HELD)
+
+    @staticmethod
     def hold_payout(payout: Payout, actor=None, reason: str = '') -> Payout:
         """Hold one payee during review — excluded from the register, dispute resolved
         without blocking the payroll cutoff for everyone else."""

@@ -133,7 +133,31 @@ class TestDrilldownAndCompute:
         resp = _client(u).get(f'{BASE}{ach.id}/drilldown/')
         assert resp.status_code == 200
         assert resp.data['breakdown']['net_value'] == '85000.0000'
+        assert resp.data['breakdown']['row_kind'] == 'transactions'
         assert resp.data['count'] >= 1
+
+    def test_drilldown_outlet_and_sku_filters(self, tree, period, primary_kpi):
+        from apps.achievements.models import Achievement
+        mk_txn(tree['ase1'].id, net_amount=Decimal('50000'), outlet_code='OUT-A', sku_code='SKU-1')
+        mk_txn(tree['ase1'].id, net_amount=Decimal('30000'), outlet_code='OUT-B', sku_code='SKU-2')
+        mk_alloc(period, primary_kpi, tree['ase1'], 100000)
+        AchievementService.compute_period(period.id, as_of=AS_OF)
+        ach = Achievement.objects.get(entity=tree['ase1'], kpi__code='PRIMARY')
+        u = _user('df@x.com', entity=tree['ase1'], perms={'achievement_view': 'own_only'})
+
+        assert _client(u).get(f'{BASE}{ach.id}/drilldown/').data['count'] == 2
+        # Outlet substring narrows to one row.
+        r = _client(u).get(f'{BASE}{ach.id}/drilldown/', {'outlet': 'OUT-A'})
+        assert r.data['count'] == 1
+        assert r.data['results'][0]['sku_code'] == 'SKU-1'
+        # SKU substring narrows independently.
+        r = _client(u).get(f'{BASE}{ach.id}/drilldown/', {'sku': 'SKU-2'})
+        assert r.data['count'] == 1
+        assert r.data['results'][0]['outlet_code'] == 'OUT-B'
+        # Both together, no match → empty (breakdown totals unchanged).
+        r = _client(u).get(f'{BASE}{ach.id}/drilldown/', {'outlet': 'OUT-A', 'sku': 'SKU-2'})
+        assert r.data['count'] == 0
+        assert r.data['breakdown']['net_value'] == '80000.0000'
 
     def test_compute_denied_without_perm(self, tree, period):
         u = _user('v@x.com', entity=tree['asm'], perms={'achievement_view': 'team'})

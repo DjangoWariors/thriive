@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Search, X } from 'lucide-react';
 import { useDrilldown } from '../../hooks/useAchievements';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Pagination } from '../../components/ui/Pagination';
@@ -18,8 +19,22 @@ export default function AchievementDrilldown() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [outlet, setOutlet] = useState('');
+  const [sku, setSku] = useState('');
+  // Debounce the text filters so we hit the server after typing settles, not per keystroke.
+  const [applied, setApplied] = useState<{ outlet: string; sku: string }>({ outlet: '', sku: '' });
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setApplied({ outlet: outlet.trim(), sku: sku.trim() });
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [outlet, sku]);
+
   const achievementId = id ? Number(id) : null;
-  const { data, isLoading, isError } = useDrilldown(achievementId, page);
+  const { data, isLoading, isError } = useDrilldown(achievementId, page, applied);
+  const showFilters = data?.breakdown.row_kind !== 'metric_values';
+  const filtersActive = applied.outlet !== '' || applied.sku !== '';
 
   const columns = useMemo<ColumnDef<KPITransaction, unknown>[]>(() => [
     { accessorKey: 'transaction_date', header: 'Date', cell: (c) => formatDate(c.getValue<string>()) },
@@ -97,9 +112,33 @@ export default function AchievementDrilldown() {
       </Card>
 
       {/* Transactions */}
-      <Card title="Transactions" subtitle={`${data.count} records`} padding="none">
-        <div className="p-4">
-          <DataTable columns={columns} data={data.results} emptyTitle="No transactions" pageSize={25} />
+      <Card title="Transactions"
+            subtitle={filtersActive ? `${data.count} records match the filters` : `${data.count} records`}
+            padding="none">
+        <div className="space-y-4 p-4">
+          {showFilters && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="w-48">
+                <Input placeholder="Filter by outlet…" value={outlet}
+                       onChange={(e) => setOutlet(e.target.value)}
+                       leftIcon={<Search className="h-4 w-4" />} />
+              </div>
+              <div className="w-48">
+                <Input placeholder="Filter by SKU…" value={sku}
+                       onChange={(e) => setSku(e.target.value)}
+                       leftIcon={<Search className="h-4 w-4" />} />
+              </div>
+              {filtersActive && (
+                <Button variant="ghost" size="sm" icon={<X className="h-4 w-4" />}
+                        onClick={() => { setOutlet(''); setSku(''); }}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          )}
+          <DataTable columns={columns} data={data.results} hideSearch
+                     emptyTitle={filtersActive ? 'No transactions match those filters' : 'No transactions'}
+                     pageSize={25} />
           <Pagination count={data.count} page={page} pageSize={25} onPageChange={setPage} />
         </div>
       </Card>

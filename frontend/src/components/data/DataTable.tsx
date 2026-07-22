@@ -18,6 +18,10 @@ interface DataTableProps<T> {
     data: T[];
     isLoading?: boolean;
     searchPlaceholder?: string;
+    /** Hide the built-in client-side search box — use when the caller owns filtering
+     * (e.g. server-side filters), so the always-on search doesn't confuse or mislead
+     * by only matching the currently-loaded page. */
+    hideSearch?: boolean;
     emptyTitle?: string;
     emptyDescription?: string;
     pageSize?: number;
@@ -28,6 +32,7 @@ export function DataTable<T>({
     data,
     isLoading = false,
     searchPlaceholder = 'Search…',
+    hideSearch = false,
     emptyTitle = 'No records',
     emptyDescription,
     pageSize = 20,
@@ -74,17 +79,19 @@ export function DataTable<T>({
 
     return (
         <div className="space-y-3">
-            <div className="relative max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"/>
-                <input
-                    type="text"
-                    placeholder={searchPlaceholder}
-                    value={globalFilter}
-                    onChange={(e) => setGlobalFilter(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm
-                     focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-                />
-            </div>
+            {!hideSearch && (
+                <div className="relative max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"/>
+                    <input
+                        type="text"
+                        placeholder={searchPlaceholder}
+                        value={globalFilter}
+                        onChange={(e) => setGlobalFilter(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm
+                         focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    />
+                </div>
+            )}
 
             {rows.length === 0 ? (
                 <EmptyState title={emptyTitle} description={emptyDescription}/>

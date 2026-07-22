@@ -302,7 +302,7 @@ class AchievementService:
 
     # ── drilldown ────────────────────────────────────────────────────────────
     @staticmethod
-    def drilldown(achievement_id: int, user):
+    def drilldown(achievement_id: int, user, *, outlet: str = '', sku: str = ''):
         ach = (
             Achievement.objects
             .select_related('kpi', 'entity', 'target_period', 'channel')
@@ -313,7 +313,7 @@ class AchievementService:
 
         # External KPIs have no transactions behind them — drill into the metric
         # fact rows instead (person-grain: the entity's own rows; territory-grain:
-        # the owned subtree, like transactions).
+        # the owned subtree, like transactions). Outlet/SKU filters don't apply.
         if ach.kpi.kpi_type == KPIDefinition.EXTERNAL:
             return ach, AchievementService._external_drill_rows(ach), 'metric_values'
 
@@ -329,6 +329,10 @@ class AchievementService:
         )
         if ach.kpi.channel_filter:
             txns = txns.filter(channel_code__in=ach.kpi.channel_filter)
+        if outlet := (outlet or '').strip():
+            txns = txns.filter(outlet_code__icontains=outlet)
+        if sku := (sku or '').strip():
+            txns = txns.filter(sku_code__icontains=sku)
         txns = scope_transactions_by_territory(txns, user, _VIEW_PERM).order_by('-transaction_date', '-id')
         return ach, txns, 'transactions'
 

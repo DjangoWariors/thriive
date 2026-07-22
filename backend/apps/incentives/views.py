@@ -361,7 +361,8 @@ class PayoutViewSet(NodeScopedQuerysetMixin, ReadOnlyModelViewSet):
             'run', 'scheme', 'target_period', 'entity', 'entity__entity_type', 'exception',
         )
         if self.action == 'retrieve':
-            qs = qs.prefetch_related('line_items__scheme_kpi__kpi')
+            # run__cycle powers the can_hold/can_release eligibility flags.
+            qs = qs.select_related('run__cycle').prefetch_related('line_items__scheme_kpi__kpi')
         p = self.request.query_params
         if period := p.get('period'):
             qs = qs.filter(target_period_id=period)

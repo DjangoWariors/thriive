@@ -1,13 +1,49 @@
 """Plan-run engines (P2) — pure math, exact Decimals, edge cases the AOP pipeline relies on."""
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from apps.targets import disaggregator, engines
+from apps.targets.plan_services import PlanService
 
 
 def _sum(d):
     return sum(d.values(), Decimal('0'))
+
+
+# ── _basis_window: recent-history bases must not reach into the future ─────────
+def test_l3m_window_for_future_plan_uses_last_complete_months():
+    """Planning Sep while it's 22 Jul: 'last 3 months' must be the last 3 COMPLETE
+    months up to today (Apr–Jun), never the plan-relative Jun–Aug (Aug is future)."""
+    today = date(2026, 7, 22)
+    b_start, b_end, scale = PlanService._basis_window(
+        'l3m_avg', date(2026, 9, 1), date(2026, 9, 30), today=today)
+    assert (b_start, b_end) == (date(2026, 4, 1), date(2026, 6, 30))
+    assert scale == Decimal('1') / Decimal('3')  # 1 plan month over a 3-month window
+
+
+def test_l3m_window_for_current_month_plan_excludes_the_partial_month():
+    """Planning Jul during Jul: the window is the last 3 complete months (Apr–Jun),
+    excluding the incomplete current month."""
+    b_start, b_end, _ = PlanService._basis_window(
+        'l3m_avg', date(2026, 7, 1), date(2026, 7, 31), today=date(2026, 7, 22))
+    assert (b_start, b_end) == (date(2026, 4, 1), date(2026, 6, 30))
+
+
+def test_l3m_window_for_past_plan_stays_period_relative():
+    """A plan whose period is already in the past keeps a period-relative window
+    (the plan start is earlier than the current month, so it wins)."""
+    b_start, b_end, _ = PlanService._basis_window(
+        'l3m_avg', date(2026, 3, 1), date(2026, 3, 31), today=date(2026, 7, 22))
+    assert (b_start, b_end) == (date(2025, 12, 1), date(2026, 2, 28))
+
+
+def test_l6m_window_anchors_to_data_horizon_for_future_plan():
+    b_start, b_end, scale = PlanService._basis_window(
+        'l6m_avg', date(2026, 9, 1), date(2026, 9, 30), today=date(2026, 7, 22))
+    assert (b_start, b_end) == (date(2026, 1, 1), date(2026, 6, 30))
+    assert scale == Decimal('1') / Decimal('6')
 
 
 # ── blend_baselines ───────────────────────────────────────────────────────────

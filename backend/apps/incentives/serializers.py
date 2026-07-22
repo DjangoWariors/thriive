@@ -355,6 +355,9 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
     line_items = PayoutLineItemSerializer(many=True, read_only=True)
     exception = PayoutExceptionSerializer(read_only=True)
     computed_at = serializers.DateTimeField(source='created_at', read_only=True)
+    # Backend-owned eligibility so the UI never offers a hold/release the API refuses.
+    can_hold = serializers.SerializerMethodField()
+    can_release = serializers.SerializerMethodField()
 
     class Meta:
         model = Payout
@@ -364,8 +367,16 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
                   'proration_factor', 'eligible_vp', 'gatekeeper_status', 'gate_results',
                   'exception',
                   'gross_payout', 'capped', 'total_payout', 'total_multiplier',
-                  'hold_status', 'hold_reason', 'adjustment_amount',
+                  'hold_status', 'hold_reason', 'can_hold', 'can_release', 'adjustment_amount',
                   'computation_id', 'computed_at', 'line_items']
+
+    def get_can_hold(self, obj) -> bool:
+        from .services import PayoutCycleService
+        return PayoutCycleService.can_hold(obj)
+
+    def get_can_release(self, obj) -> bool:
+        from .services import PayoutCycleService
+        return PayoutCycleService.can_release(obj)
 
 
 class PayoutSummarySerializer(serializers.Serializer):

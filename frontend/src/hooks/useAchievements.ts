@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { achievementService } from '../services/achievementService';
 import type { AchievementListParams, AlertRule, TerritoryGridParams } from '../types/achievement';
 
@@ -6,7 +6,8 @@ const achievementKeys = {
   list: (params?: AchievementListParams) => ['achievements', 'list', params ?? {}] as const,
   dashboard: (period: number | null, entity?: number) =>
     ['achievements', 'dashboard', period, entity ?? null] as const,
-  drilldown: (id: number, page: number) => ['achievements', 'drilldown', id, page] as const,
+  drilldown: (id: number, page: number, filters?: { outlet?: string; sku?: string }) =>
+    ['achievements', 'drilldown', id, page, filters ?? {}] as const,
   territory: (params: TerritoryGridParams) => ['achievements', 'territory', params] as const,
   alertRules: ['achievements', 'alert-rules'] as const,
 };
@@ -35,11 +36,13 @@ export function useAchievements(params?: AchievementListParams) {
   });
 }
 
-export function useDrilldown(id: number | null, page = 1) {
+export function useDrilldown(id: number | null, page = 1, filters?: { outlet?: string; sku?: string }) {
   return useQuery({
-    queryKey: achievementKeys.drilldown(id ?? 0, page),
-    queryFn: () => achievementService.drilldown(id as number, page),
+    queryKey: achievementKeys.drilldown(id ?? 0, page, filters),
+    queryFn: () => achievementService.drilldown(id as number, page, filters),
     enabled: id !== null && id > 0,
+    // Keep the last page/filter result on screen while the next loads (no skeleton flash).
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -411,9 +411,10 @@ class PlanService:
 
     # ── input fetchers (ORM side of the pure engines) ────────────────────────
     @staticmethod
-    def _basis_window(basis: str, start, end):
+    def _basis_window(basis: str, start, end, today=None):
         """Map a baseline/recipe basis code to a date window + an annualising scale
-        (plan-period value ≈ window value × scale)."""
+        (plan-period value ≈ window value × scale). ``today`` (default: now) bounds the
+        recent-history bases so planning a future month can't reach into the future."""
         plan_months = (end.year - start.year) * 12 + end.month - start.month + 1
         if basis in ('ly_same_period', periods.LAST_YEAR_SAME_PERIOD):
             b = periods.resolve_comparison_window(start, end, periods.LAST_YEAR_SAME_PERIOD)
@@ -423,8 +424,14 @@ class PlanService:
             return b[0], b[1], Decimal('1')
         if basis in ('l3m_avg', 'l6m_avg'):
             months = 3 if basis == 'l3m_avg' else 6
-            b_start = periods._shift_months(start, -months)
-            b_end = start - timedelta(days=1)
+            # "Last N months" is recent HISTORY — measure it from the data horizon, not the
+            # plan's (possibly future) start. Anchoring to the first of the current month
+            # means the last N *complete* months up to today; for a plan already in the past
+            # the plan start is earlier, so it wins and the window is period-relative as before.
+            today = today or timezone.localdate()
+            anchor = min(start, today.replace(day=1))
+            b_start = periods._shift_months(anchor, -months)
+            b_end = anchor - timedelta(days=1)
             return b_start, b_end, Decimal(plan_months) / Decimal(months)
         raise BusinessError(f'Unknown baseline basis "{basis}".')
 

@@ -117,6 +117,8 @@ export interface DrilldownResponse {
     gross_value: string;
     returns_value: string;
     net_value: string;
+    /** 'transactions' for sales KPIs, 'metric_values' for external-metric KPIs. */
+    row_kind?: 'transactions' | 'metric_values';
   };
   count: number;
   next: string | null;

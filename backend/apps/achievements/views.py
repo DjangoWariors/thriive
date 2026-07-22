@@ -95,11 +95,18 @@ class AchievementViewSet(NodeScopedQuerysetMixin, ReadOnlyModelViewSet):
     @extend_schema(
         tags=['Achievements'], operation_id='achievement_drilldown',
         summary='Gross/returns/net breakdown + paginated transactions',
+        parameters=[
+            OpenApiParameter('outlet', description='Filter transactions by outlet code (substring)', type=str),
+            OpenApiParameter('sku', description='Filter transactions by SKU code (substring)', type=str),
+        ],
         responses={200: TransactionSerializer(many=True)},
     )
     @action(detail=True, methods=['get'])
     def drilldown(self, request, pk=None):
-        ach, rows, row_kind = AchievementService.drilldown(int(pk), request.user)
+        p = request.query_params
+        ach, rows, row_kind = AchievementService.drilldown(
+            int(pk), request.user, outlet=p.get('outlet', ''), sku=p.get('sku', ''),
+        )
         row_serializer = (
             ExternalMetricValueSerializer if row_kind == 'metric_values' else TransactionSerializer
         )

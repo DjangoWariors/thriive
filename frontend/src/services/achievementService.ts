@@ -27,8 +27,11 @@ export const achievementService = {
     return data;
   },
 
-  async drilldown(id: number, page = 1): Promise<DrilldownResponse> {
-    const { data } = await api.get<DrilldownResponse>(`${BASE}/${id}/drilldown/`, { params: { page } });
+  async drilldown(id: number, page = 1, filters?: { outlet?: string; sku?: string }): Promise<DrilldownResponse> {
+    const { data } = await api.get<DrilldownResponse>(`${BASE}/${id}/drilldown/`, {
+      params: { page, ...(filters?.outlet ? { outlet: filters.outlet } : {}),
+                ...(filters?.sku ? { sku: filters.sku } : {}) },
+    });
     return data;
   },
 
