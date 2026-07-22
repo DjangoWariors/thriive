@@ -31,6 +31,7 @@ import {
 import {cn} from '../../utils/cn';
 import {EXTERNAL_METRICS_ENABLED} from '../../config/features';
 import {useRBAC} from '../../hooks/useRBAC';
+import type {PermLevel} from '../../hooks/useRBAC';
 import {usePendingCount} from '../../hooks/useWorkflows';
 import {Tooltip} from '../ui/Tooltip';
 
@@ -41,8 +42,21 @@ type NavLeaf = {
     icon: LucideIcon;
     href: string;
     permission?: string;
+    // Minimum level required for `permission` (defaults to any level > none). Org-wide
+    // payout screens set 'view_all' so own_only holders don't see a link that 403s.
+    minLevel?: Exclude<PermLevel, null>;
     badge?: boolean;
 };
+
+/** Shared leaf-visibility rule so the single-item and section renders can't drift. */
+function canSeeNavItem(
+    item: NavLeaf,
+    can: (r: string) => boolean,
+    canAtLeast: (r: string, l: Exclude<PermLevel, null>) => boolean,
+): boolean {
+    if (!item.permission) return true;
+    return item.minLevel ? canAtLeast(item.permission, item.minLevel) : can(item.permission);
+}
 
 type NavSection = {
     group: string;
@@ -76,7 +90,7 @@ const NAV_ITEMS: NavEntry[] = [
         group: 'OPERATIONS',
         items: [
             {label: 'Achievement', icon: TrendingUp, href: '/achievements', permission: 'achievement_view'},
-            {label: 'Payout Cycles', icon: CalendarClock, href: '/incentives/cycles', permission: 'final_payout'},
+            {label: 'Payout Cycles', icon: CalendarClock, href: '/incentives/cycles', permission: 'final_payout', minLevel: 'view_all'},
             {label: 'Payouts', icon: DollarSign, href: '/incentives/payouts', permission: 'final_payout'},
             {
                 label: 'Exceptions',
@@ -130,8 +144,8 @@ const NAV_ITEMS: NavEntry[] = [
 
 
 function NavItem({item, collapsed, badgeCount = 0}: { item: NavLeaf; collapsed: boolean; badgeCount?: number }) {
-    const {can} = useRBAC();
-    if (item.permission && !can(item.permission)) return null;
+    const {can, canAtLeast} = useRBAC();
+    if (!canSeeNavItem(item, can, canAtLeast)) return null;
     const showBadge = Boolean(item.badge) && badgeCount > 0;
 
     const link = (
@@ -179,7 +193,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({collapsed, onToggle, mobileOpen, onMobileClose}: SidebarProps) {
-    const {can} = useRBAC();
+    const {can, canAtLeast} = useRBAC();
     const canApprove = can('workflow_management');
     const {data: pendingCount = 0} = usePendingCount(canApprove);
     const badgeFor = (item: NavLeaf) =>
@@ -231,7 +245,7 @@ export function Sidebar({collapsed, onToggle, mobileOpen, onMobileClose}: Sideba
                     {NAV_ITEMS.map((entry) => {
                         if (isNavSection(entry)) {
                             const visibleItems = entry.items.filter(
-                                (item) => !item.permission || can(item.permission),
+                                (item) => canSeeNavItem(item, can, canAtLeast),
                             );
                             // Hide the whole section — including its header — when the
                             // user can reach none of its items.

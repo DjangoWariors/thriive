@@ -217,8 +217,12 @@ function App() {
                                 <Route path="/incentives/variable-pay" element={<VariablePayPage/>}/>
                             </Route>
 
-                            <Route element={<RequirePermission permission="final_payout"/>}>
+                            {/* Cycle month-close is org-wide payout data → view_all+. */}
+                            <Route element={<RequirePermission permission="final_payout" minLevel="view_all"/>}>
                                 <Route path="/incentives/cycles" element={<CycleWorkspacePage/>}/>
+                            </Route>
+                            {/* The register is subtree-scoped, so own_only sees only their own payout. */}
+                            <Route element={<RequirePermission permission="final_payout"/>}>
                                 <Route path="/incentives/payouts" element={<PayoutSummaryPage/>}/>
                                 <Route path="/incentives/payouts/:id" element={<PayoutBreakdownPage/>}/>
                             </Route>

@@ -158,9 +158,15 @@ class TestRunLifecycleApi:
         assert resp.data['status'] == 'paid'
         assert resp.data['payment_ref'] == 'NEFT-42'
 
-    def test_runs_listable_by_any_final_payout_level(self, computed, period):
-        u = _user('rep2@x.com', entity=computed['ase1'], perms={'final_payout': 'own_only'})
-        resp = _client(u).get(f'{BASE}payout-runs/', {'period': period.id})
+    def test_runs_are_payout_admin_only(self, computed, period):
+        # Runs carry scheme-level totals and no entity anchor → view_all+ only.
+        # own_only holders (field ICs, partners) see their own payout via /payouts/,
+        # never the org-wide run list.
+        own = _user('rep2@x.com', entity=computed['ase1'], perms={'final_payout': 'own_only'})
+        assert _client(own).get(f'{BASE}payout-runs/', {'period': period.id}).status_code == 403
+
+        admin = _user('payadmin@x.com', perms={'final_payout': 'view_all'})
+        resp = _client(admin).get(f'{BASE}payout-runs/', {'period': period.id})
         assert resp.status_code == 200
         assert len(resp.data['results']) == 1
 

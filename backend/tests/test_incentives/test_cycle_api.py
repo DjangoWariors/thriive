@@ -126,3 +126,16 @@ class TestCycleApi:
         u = _user('rep@x.com', perms={'final_payout': 'own_only'})
         resp = _client(u).post(f'{BASE}cycles/{opened_cycle}/finalize/', {}, format='json')
         assert resp.status_code == 403
+
+    def test_own_only_cannot_read_cycle(self, opened_cycle):
+        # The cycle workspace is org-wide payout data (review aggregates, the full
+        # disbursement register). own_only holders must never reach any of it — the
+        # detail=True read actions fetch the cycle directly, so gating lives on the
+        # viewset's permission class, not the object check.
+        u = _user('rep@x.com', perms={'final_payout': 'own_only'})
+        c, cid = _client(u), opened_cycle
+        assert c.get(f'{BASE}cycles/').status_code == 403
+        assert c.get(f'{BASE}cycles/{cid}/').status_code == 403
+        assert c.get(f'{BASE}cycles/{cid}/review/').status_code == 403
+        assert c.get(f'{BASE}cycles/{cid}/register/').status_code == 403
+        assert c.get(f'{BASE}cycles/{cid}/readiness/').status_code == 403

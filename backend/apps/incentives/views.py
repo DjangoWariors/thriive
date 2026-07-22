@@ -11,7 +11,7 @@ from rest_framework import mixins
 
 from apps.audit.services import AccessService
 from apps.core.pagination import StandardPagination
-from apps.core.permissions import _rank, highest_level
+from apps.core.permissions import RBACPermission, _rank, highest_level
 from apps.core.scoping import NodeScopedQuerysetMixin, is_planning_admin
 from apps.jobs.dispatch import run_or_dispatch
 from apps.jobs.models import BulkJob
@@ -60,6 +60,28 @@ def _require_planning_admin(request, required: str, message: str) -> None:
 def _require_resource(request, resource: str, message: str) -> None:
     if not request.user.is_superuser and _rank(highest_level(request.user, resource)) <= 0:
         raise PermissionDenied(message)
+
+
+class PayoutAdminPermission(RBACPermission):
+    """A payout cycle is org-wide payout data carrying no entity anchor: only a payout
+    admin (``final_payout`` at ``view_all``/``full``) may read or operate the month-close
+    workspace. ``own_only``/``view_readonly`` holders (partners, field ICs) see just their
+    own payout via ``PayoutViewSet`` — never the cycle. The base object check resolves an
+    entity FK the cycle doesn't have (it 403'd default retrieve while letting the raw-fetch
+    ``detail=True`` actions through), so gate purely on level, for both list and detail."""
+
+    def has_permission(self, request, view) -> bool:
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        required = getattr(view, 'required_permission', None)
+        if required is None:
+            return True
+        return _rank(highest_level(request.user, required)) >= _rank('view_all')
+
+    def has_object_permission(self, request, view, obj) -> bool:
+        return self.has_permission(request, view)
 
 
 # ── schemes ────────────────────────────────────────────────────────────────────
@@ -227,11 +249,13 @@ class VariablePayViewSet(NodeScopedQuerysetMixin, mixins.ListModelMixin, Generic
     retrieve=extend_schema(tags=['Incentives'], summary='Retrieve a payout run'),
 )
 class PayoutRunViewSet(ReadOnlyModelViewSet):
-    """Runs have no entity anchor — any final_payout level may read them; the payout
-    rows inside stay subtree-scoped. Lifecycle actions are explicitly gated below
-    (the runs are fetched directly so RBAC object checks don't apply)."""
+    """Runs are org-wide payout artifacts (they carry a scheme-level ``total_payout`` and no
+    entity anchor): only a payout admin (``final_payout`` at ``view_all``/``full``) may read
+    them. own_only holders see their own payout via ``PayoutViewSet``. Lifecycle actions are
+    additionally gated below (the runs are fetched directly so RBAC object checks don't apply)."""
 
     required_permission = 'final_payout'
+    permission_classes = [PayoutAdminPermission]
     serializer_class = PayoutRunSerializer
     pagination_class = StandardPagination
 
@@ -542,6 +566,7 @@ class PayoutCycleViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, Gener
     needs payout_approve (and can't be the submitter)."""
 
     required_permission = 'final_payout'
+    permission_classes = [PayoutAdminPermission]
     serializer_class = PayoutCycleSerializer
     pagination_class = StandardPagination
 

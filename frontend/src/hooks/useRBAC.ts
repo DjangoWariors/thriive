@@ -49,6 +49,14 @@ export function useRBAC() {
         return permLevel(resource) !== null;
     }
 
+    // True when the user's level for `resource` is at least `minLevel`. Used to gate
+    // org-wide payout screens (cycles/runs) to view_all+, mirroring the backend's
+    // PayoutAdminPermission: own_only holders see only their own payout, never the workspace.
+    function canAtLeast(resource: string, minLevel: Exclude<PermLevel, null>): boolean {
+        const level = permLevel(resource);
+        return level !== null && (LEVEL_RANK[level] ?? 0) >= (LEVEL_RANK[minLevel] ?? 0);
+    }
+
     function canAny(...resources: string[]): boolean {
         return resources.some((r) => can(r));
     }
@@ -62,5 +70,5 @@ export function useRBAC() {
         return level !== null && WRITE_LEVELS.has(level);
     }
 
-    return {can, canAny, canWrite, permLevel};
+    return {can, canAny, canWrite, canAtLeast, permLevel};
 }

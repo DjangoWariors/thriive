@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AlertTriangle, ArrowRight, Eye, IndianRupee, ShieldX, Users } from 'lucide-react';
 import { usePeriodSelector } from '../../hooks/usePeriodSelector';
+import { useRBAC } from '../../hooks/useRBAC';
 import { useTargetPeriods } from '../../hooks/useTargets';
 import { usePayoutRuns, usePayouts, usePayoutSummary, useSchemes } from '../../hooks/useIncentives';
 import { Badge } from '../../components/ui/Badge';
@@ -24,6 +25,10 @@ const KIND_ORDER: Record<PayoutRun['kind'], number> = { final: 0, adjustment: 1,
 export default function PayoutSummaryPage() {
   const navigate = useNavigate();
   const { selectedPeriodId } = usePeriodSelector();
+  // Payout runs are org-wide (scheme-level totals) → view_all+ only. own_only holders
+  // still see their own scoped payout table/summary below, just not the run banner.
+  const { canAtLeast } = useRBAC();
+  const isPayoutAdmin = canAtLeast('final_payout', 'view_all');
 
   const [schemeId, setSchemeId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -36,7 +41,7 @@ export default function PayoutSummaryPage() {
   const schemes = schemesResp?.results ?? [];
   const effectiveSchemeId = schemeId ?? schemes[0]?.id ?? null;
 
-  const runParams = selectedPeriodId !== null && effectiveSchemeId !== null
+  const runParams = isPayoutAdmin && selectedPeriodId !== null && effectiveSchemeId !== null
     ? { period: selectedPeriodId, scheme: effectiveSchemeId } : undefined;
   const { data: runsResp } = usePayoutRuns(runParams);
   const liveRun: PayoutRun | undefined = useMemo(
@@ -85,7 +90,8 @@ export default function PayoutSummaryPage() {
         </Card>
       ) : (
         <>
-          {/* Where these numbers come from */}
+          {/* Where these numbers come from — org-wide run detail, payout admins only. */}
+          {isPayoutAdmin && (
           <Card className="mb-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
@@ -144,6 +150,7 @@ export default function PayoutSummaryPage() {
               </div>
             )}
           </Card>
+          )}
 
           {/* Summary cards */}
           {summary && (

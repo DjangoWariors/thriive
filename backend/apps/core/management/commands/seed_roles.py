@@ -53,6 +53,12 @@ ROLES_SEED = [
             dashboard='team',
             achievement_view='team',
             target_management='team',
+            # Read-only reference lists that drive the KPI/channel pickers on the
+            # achievement-by-territory and plan-actuals screens (this role's org
+            # subtree scoping still applies to entities; geography/channels are
+            # low-sensitivity reference data).
+            kpi_definitions='view_readonly',
+            hierarchy_management='view_readonly',
             exception_approve='team',
             workflow_management='team',
             report_generation='team',
@@ -71,6 +77,10 @@ ROLES_SEED = [
             dashboard='team',
             achievement_view='team',
             target_management='view_edit',
+            # Read-only reference lists for the KPI/channel pickers on the
+            # achievement-by-territory and plan-actuals screens.
+            kpi_definitions='view_readonly',
+            hierarchy_management='view_readonly',
             exception_management='team',
             workflow_management='team',
             report_sales='team',
@@ -88,7 +98,10 @@ ROLES_SEED = [
             dashboard='team',
             achievement_view='team',
             target_management='view_readonly',
-            final_payout='own_only',
+            # Read-only reference lists for the KPI/channel pickers on the
+            # achievement-by-territory and plan-actuals screens.
+            kpi_definitions='view_readonly',
+            hierarchy_management='view_readonly',
             exception_management='own_only',
         ),
     },
@@ -106,8 +119,11 @@ ROLES_SEED = [
             # (e.g. an MT executive owning a district). 'team' + territory scoping keeps
             # them inside their owned subtree; workflow access is their approvals inbox.
             target_management='team',
+            # Read-only reference lists for the KPI/channel pickers on the
+            # achievement-by-territory and plan-actuals screens.
+            kpi_definitions='view_readonly',
+            hierarchy_management='view_readonly',
             workflow_management='team',
-            final_payout='own_only',
             exception_management='own_only',
             profile='own_only',
         ),

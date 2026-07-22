@@ -1,15 +1,20 @@
 import {Navigate, Outlet} from 'react-router';
 import {useAuth} from '../../hooks/useAuth';
 import {useRBAC} from '../../hooks/useRBAC';
+import type {PermLevel} from '../../hooks/useRBAC';
 
 /**
  * Route guard: renders nested routes only if the current user has any level
- * above 'none' for `permission`; otherwise redirects to /403. Mirrors the
- * permission check the Sidebar uses to show/hide nav links.
+ * above 'none' for `permission` (or at least `minLevel`, when given); otherwise
+ * redirects to /403. Mirrors the permission check the Sidebar uses to show/hide
+ * nav links. `minLevel` gates org-wide payout screens (cycles) to view_all+.
  */
-export function RequirePermission({permission}: {permission: string}) {
-    const {can} = useRBAC();
-    return can(permission) ? <Outlet/> : <Navigate to="/403" replace/>;
+export function RequirePermission(
+    {permission, minLevel}: {permission: string; minLevel?: Exclude<PermLevel, null>},
+) {
+    const {can, canAtLeast} = useRBAC();
+    const ok = minLevel ? canAtLeast(permission, minLevel) : can(permission);
+    return ok ? <Outlet/> : <Navigate to="/403" replace/>;
 }
 
 /**
