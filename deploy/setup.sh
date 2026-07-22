@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Thriive IMS — one-shot EC2 bootstrap.
-# Run ONCE as root on a fresh Ubuntu 24.04 instance, after the repo is placed at
-# /var/www/html/thriive (git clone or rsync). Idempotent enough to re-run safely.
+# Run ONCE as root on a fresh Ubuntu instance (24.04 LTS or newer; tested against
+# 25.10 / Python 3.13), after the repo is placed at /var/www/html/thriive
+# (git clone or rsync). Idempotent enough to re-run safely.
 #
 #   sudo bash /var/www/html/thriive/deploy/setup.sh
 #
@@ -55,27 +56,37 @@ echo ">>> Thriive setup — APP_DIR=$APP_DIR HOST=$DOMAIN HTTPS=$ENABLE_HTTPS"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y \
-    python3.12 python3.12-venv python3-pip \
+    python3 python3-venv python3-dev python3-pip \
     build-essential libpq-dev \
     redis-server nginx supervisor \
     curl ca-certificates gnupg lsb-release \
     certbot python3-certbot-nginx
 
-# --- 2. PostgreSQL 17 from the PGDG repo (not in stock Ubuntu) -------------------
-if ! command -v psql >/dev/null || ! psql --version | grep -q " $PG_MAJOR\."; then
-    install -d /usr/share/postgresql-common/pgdg
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
-    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+# --- 2. PostgreSQL. Recent Ubuntu (25.x) ships postgresql-17 in its own archive;
+#        try that first, fall back to the PGDG repo (needed on 24.04 LTS), then to
+#        the distro default so a brand-new release never hard-fails the deploy. ---
+if ! command -v psql >/dev/null; then
+    apt-get install -y "postgresql-$PG_MAJOR" || {
+        echo ">>> postgresql-$PG_MAJOR not in distro repos — adding PGDG."
+        install -d /usr/share/postgresql-common/pgdg
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
 https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-        > /etc/apt/sources.list.d/pgdg.list
-    apt-get update -y
-    apt-get install -y "postgresql-$PG_MAJOR"
+            > /etc/apt/sources.list.d/pgdg.list
+        apt-get update -y || true
+        apt-get install -y "postgresql-$PG_MAJOR" || apt-get install -y postgresql
+    }
 fi
 systemctl enable --now postgresql
 
-# --- 3. Node.js from NodeSource (stock npm is too old for Vite 6 / React 19) -----
-if ! command -v node >/dev/null || [ "$(node -v | sed 's/v\([0-9]*\).*/\1/')" -lt "$NODE_MAJOR" ]; then
+# --- 3. Node.js + npm (Vite 6 / React 19 need Node >= NODE_MAJOR) ----------------
+# Prefer the distro packages (recent Ubuntu ships Node 20+); only fall back to
+# NodeSource if that's missing or too old (and NodeSource may lag new codenames).
+apt-get install -y nodejs npm || true
+if ! command -v node >/dev/null || \
+   [ "$(node -v | sed 's/v\([0-9]*\).*/\1/')" -lt "$NODE_MAJOR" ]; then
+    apt-get remove -y npm || true          # avoid clashing with NodeSource's bundled npm
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
     apt-get install -y nodejs
 fi

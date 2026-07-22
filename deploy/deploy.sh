@@ -21,7 +21,7 @@ SKIP_RESTART=0
 # --- Backend --------------------------------------------------------------------
 cd "$BACKEND"
 if [ ! -d venv ]; then
-    python3.12 -m venv venv
+    python3 -m venv venv
 fi
 venv/bin/pip install --upgrade pip
 venv/bin/pip install -r requirements/prod.txt
