@@ -31,7 +31,8 @@ export function ReviewerWorkspace({ plan, onBack }: { plan: TargetPlan; onBack: 
     {
       header: '', align: 'right',
       render: (t) => (t.status === 'pending' ? (
-        <Button variant="ghost" size="sm" loading={accept.isPending}
+        <Button variant="ghost" size="sm"
+                loading={accept.isPending && accept.variables?.taskId === t.id}
                 onClick={() => accept.mutate({ taskId: t.id }, {
                   onSuccess: () => notify.success('Accepted — thank you'),
                 })}>

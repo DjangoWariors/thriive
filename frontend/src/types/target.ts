@@ -259,6 +259,16 @@ export interface RunPreview {
   top_deltas: { geography_node: string; kpi: string; from: string; to: string; delta: string }[];
 }
 
+export interface StagedRow {
+  geography_node: string;
+  geography_node_code: string;
+  level: string;
+  kpi: string;
+  sku_group: string | null;
+  value: string;
+  base_value: string | null;
+}
+
 export interface ExplainRow {
   kpi: string;
   period: string;

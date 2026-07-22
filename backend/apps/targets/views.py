@@ -503,6 +503,29 @@ class PlanRunViewSet(ReadOnlyModelViewSet):
     def preview(self, request, pk=None):
         return Response(PlanService.preview_run(self.get_object()))
 
+    @extend_schema(tags=['Target Plans'],
+                   summary='Every staged row for a run (paginated) — the full generated set, '
+                           'not just what changed',
+                   responses={200: OpenApiResponse(description='paginated { geography_node, level, '
+                                                              'kpi, sku_group, value, base_value }')})
+    @action(detail=True, methods=['get'], url_path='staged-rows')
+    def staged_rows(self, request, pk=None):
+        run = self.get_object()
+        qs = run.allocations.select_related('geography_node', 'kpi', 'sku_group').order_by(
+            'geography_node__depth', 'geography_node__path', 'kpi__code', 'sku_group__code')
+        page = self.paginate_queryset(qs)
+        rows = [{
+            'geography_node': r.geography_node.name,
+            'geography_node_code': r.geography_node.code,
+            'level': r.geography_node.level,
+            'kpi': r.kpi.code,
+            'sku_group': r.sku_group.code if r.sku_group_id else None,
+            'value': str(r.value),
+            'base_value': str(r.base_value) if r.base_value is not None else None,
+        } for r in (page if page is not None else qs)]
+        return (self.get_paginated_response(rows) if page is not None
+                else Response({'results': rows, 'count': len(rows)}))
+
     @extend_schema(tags=['Target Plans'], summary='Commit staging → live targets (atomic, snapshotted)',
                    request=CommitRunSerializer)
     @action(detail=True, methods=['post'])

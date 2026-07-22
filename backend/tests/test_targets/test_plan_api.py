@@ -149,6 +149,23 @@ def test_full_plan_flow_over_http(world, plan_id):
     assert resp.status_code == 200 and resp.data['status'] == 'published'
 
 
+def test_staged_rows_returns_full_generated_set(world, plan_id):
+    """View staged rows: every generated row (all levels), not just what changed —
+    the fix for a zero-change split having no visibility into its numbers."""
+    admin = _auth(world['admin'])
+    run_id = admin.post(f'{BASE}/plans/{plan_id}/runs/', {'kind': 'spatial'}, format='json').data['id']
+
+    resp = admin.get(f'{BASE}/runs/{run_id}/staged-rows/')
+    assert resp.status_code == 200
+    assert resp.data['count'] == 5  # nation + 2 zones + 2 towns — the whole staged set
+    rows = resp.data['results']
+    assert {r['geography_node_code'] for r in rows} == {'IN', 'ZA', 'ZB', 'A1', 'A2'}
+    # Root carries the top number; shape of a row is territory/level/kpi/value/base.
+    root = next(r for r in rows if r['geography_node_code'] == 'IN')
+    assert root['value'] == '10000.0000'
+    assert set(root) >= {'geography_node', 'level', 'kpi', 'sku_group', 'value', 'base_value'}
+
+
 # ── the lazy grid ─────────────────────────────────────────────────────────────
 def test_grid_returns_one_level_with_context(world, plan_id):
     admin = _auth(world['admin'])

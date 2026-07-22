@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { targetService } from '../services/targetService';
 import type {
   GenerateYearPayload,
@@ -20,6 +20,7 @@ const targetKeys = {
   costPreview: (planId: number) => ['targets', 'cost-preview', planId] as const,
   runs: (p: object) => ['targets', 'runs', p] as const,
   runPreview: (id: number) => ['targets', 'runs', 'preview', id] as const,
+  runStagedRows: (id: number, page: number) => ['targets', 'runs', 'staged-rows', id, page] as const,
   explain: (runId: number, nodeId: number) => ['targets', 'explain', runId, nodeId] as const,
   reviewTasks: (p: object) => ['targets', 'review-tasks', p] as const,
   recipes: () => ['targets', 'recipes'] as const,
@@ -175,6 +176,15 @@ export function useRunPreview(runId: number | null) {
     queryKey: targetKeys.runPreview(runId ?? 0),
     queryFn: () => targetService.runPreview(runId!),
     enabled: runId !== null && runId > 0,
+  });
+}
+
+export function useRunStagedRows(runId: number | null, page: number, enabled: boolean) {
+  return useQuery({
+    queryKey: targetKeys.runStagedRows(runId ?? 0, page),
+    queryFn: () => targetService.runStagedRows(runId!, page),
+    enabled: enabled && runId !== null && runId > 0,
+    placeholderData: keepPreviousData,
   });
 }
 

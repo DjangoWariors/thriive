@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { useCommitRun, useDiscardRun, useRunPreview } from '../../hooks/useTargets';
+import { useCommitRun, useDiscardRun, useRunPreview, useRunStagedRows } from '../../hooks/useTargets';
 import type { PlanRun } from '../../types/target';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { Pagination } from '../ui/Pagination';
 import { notify } from '../../utils/notify';
 import { formatInr as inr } from '../../utils/format';
 import { apiErrorMessage } from '../../utils/apiError';
+
+const STAGED_PAGE_SIZE = 25;
 
 const RUN_KIND_LABELS: Record<string, string> = {
   spatial: 'Territory split', product: 'Product split', realign: 'Realignment',
@@ -20,6 +23,9 @@ export function StagedRunReview({ run }: { run: PlanRun }) {
   const discard = useDiscardRun();
   const [strategy, setStrategy] = useState<'keep' | 'drop'>('keep');
   const [showChanges, setShowChanges] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [allPage, setAllPage] = useState(1);
+  const { data: staged } = useRunStagedRows(run.id, allPage, showAll);
   const collisions = preview?.override_collisions ?? [];
   const collisionCount = preview?.override_collision_count ?? 0;
 
@@ -44,8 +50,13 @@ export function StagedRunReview({ run }: { run: PlanRun }) {
         </div>
         <div className="flex items-center gap-2">
           {preview && preview.top_deltas.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setShowChanges((v) => !v)}>
+            <Button variant="outline" size="sm" onClick={() => setShowChanges((v) => !v)}>
               {showChanges ? 'Hide changes' : 'What changes?'}
+            </Button>
+          )}
+          {preview && preview.staged_rows > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Hide staged rows' : 'View staged rows'}
             </Button>
           )}
           <Button variant="outline" size="sm" loading={discard.isPending}
@@ -83,6 +94,41 @@ export function StagedRunReview({ run }: { run: PlanRun }) {
           <p className="px-2 pt-1 text-[11px] text-gray-400">
             Largest moves first{preview.changed > preview.top_deltas.length
               ? ` — showing ${preview.top_deltas.length} of ${preview.changed} changed rows` : ''}.
+          </p>
+        </div>
+      )}
+
+      {showAll && (
+        <div className="mt-3 overflow-x-auto rounded-lg border border-blue-100 bg-white p-2">
+          <table className="w-full text-xs text-gray-600">
+            <thead><tr className="text-left uppercase text-gray-400">
+              <th className="px-2 py-1">Territory</th><th className="px-2 py-1">Level</th>
+              <th className="px-2 py-1">KPI</th><th className="px-2 py-1">Product</th>
+              <th className="px-2 py-1 text-right">Staged</th><th className="px-2 py-1 text-right">Base</th>
+            </tr></thead>
+            <tbody>
+              {(staged?.results ?? []).map((r, i) => (
+                <tr key={i}>
+                  <td className="px-2 py-1 font-medium text-gray-800">
+                    {r.geography_node} <span className="text-gray-400">{r.geography_node_code}</span>
+                  </td>
+                  <td className="px-2 py-1">{r.level}</td>
+                  <td className="px-2 py-1">{r.kpi}</td>
+                  <td className="px-2 py-1">{r.sku_group ?? '—'}</td>
+                  <td className="px-2 py-1 text-right">₹{inr(r.value)}</td>
+                  <td className="px-2 py-1 text-right text-gray-400">
+                    {r.base_value !== null ? `₹${inr(r.base_value)}` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-2 pt-1">
+            <Pagination count={staged?.count ?? 0} page={allPage} pageSize={STAGED_PAGE_SIZE}
+                        onPageChange={setAllPage} />
+          </div>
+          <p className="px-2 pt-1 text-[11px] text-gray-400">
+            Every generated row — the full split before it's applied, changed or not.
           </p>
         </div>
       )}

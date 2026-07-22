@@ -66,7 +66,7 @@ export default function TransactionsPage() {
       </button>
       <PageHeader
           title="Sales Data"
-          description="Every sale and return that your KPIs are calculated from. Bring it in from any source — your DMS, the field app, QR scans or uploaded invoices."
+          description="Every sale and return that your KPIs are calculated from. Bring it in from any source — your DMS, the field app"
           actions={<>{writable && (
           <Button icon={<Upload className="h-4 w-4" />} onClick={() => setImportOpen(true)}>
             Import sales data

@@ -17,6 +17,7 @@ import type {
   RevisionPolicy,
   RevisionPolicyPayload,
   RunPreview,
+  StagedRow,
   TargetAllocation,
   TargetPeriod,
   TargetRevisionEntry,
@@ -104,6 +105,11 @@ export const targetService = {
   },
   async runPreview(id: number): Promise<RunPreview> {
     const { data } = await api.get<RunPreview>(`${BASE}/runs/${id}/preview/`);
+    return data;
+  },
+  async runStagedRows(id: number, page = 1): Promise<PaginatedResponse<StagedRow>> {
+    const { data } = await api.get<PaginatedResponse<StagedRow>>(
+      `${BASE}/runs/${id}/staged-rows/`, { params: { page } });
     return data;
   },
   async commitRun(id: number, overrideStrategy: 'keep' | 'drop' = 'keep'): Promise<Record<string, number>> {

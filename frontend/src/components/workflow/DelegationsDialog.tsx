@@ -133,7 +133,7 @@ function DelegationSection({title, hint, rows, render, canEnd = false}: {
                             {isActiveNow(d) && <Badge variant="success">Active now</Badge>}
                             {canEnd && (
                                 <Button variant="ghost" size="sm"
-                                        loading={endDelegation.isPending}
+                                        loading={endDelegation.isPending && endDelegation.variables === d.id}
                                         aria-label="End this cover"
                                         onClick={() =>
                                             endDelegation.mutate(d.id, {
