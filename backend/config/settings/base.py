@@ -174,6 +174,10 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Kolkata'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Celery's built-in default queue is named 'celery'. The workers consume named queues
+# (deploy/supervisor/thriive.conf), so anything CELERY_TASK_ROUTES doesn't route must land
+# on one of them — otherwise it is published to a queue nobody listens to and never runs.
+CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
     'apps.achievements.tasks.*': {'queue': 'achievements'},
     'apps.incentives.tasks.*': {'queue': 'payouts'},
