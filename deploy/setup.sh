@@ -140,14 +140,11 @@ chmod 440 /etc/sudoers.d/thriive
 visudo -cf /etc/sudoers.d/thriive
 
 # --- 5. PostgreSQL role + database ----------------------------------------------
-sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
-      CREATE ROLE $DB_USER LOGIN PASSWORD '$DB_PASSWORD';
-   END IF;
-END
-\$\$;
+# The password goes in as a psql variable and is quoted with format(%L), so any
+# character (quotes, |, &, $) is safe — never interpolated into the SQL text.
+sudo -u postgres psql -v ON_ERROR_STOP=1 -v db_password="$DB_PASSWORD" <<SQL
+SELECT format('CREATE ROLE $DB_USER LOGIN PASSWORD %L', :'db_password')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER')\gexec
 SELECT 'CREATE DATABASE $DB_NAME OWNER $DB_USER'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$DB_NAME')\gexec
 ALTER DATABASE $DB_NAME OWNER TO $DB_USER;
@@ -156,9 +153,12 @@ SQL
 # --- 6. Production .env (created once; edit it, then re-run deploy.sh) -----------
 if [ ! -f "$BACKEND/.env" ]; then
     echo ">>> Writing $BACKEND/.env from template — REVIEW SECRETS before going live."
+    # sed treats \, & and the | delimiter specially in the replacement — escape
+    # them so a strong password can't corrupt the .env.
+    DB_PASSWORD_ESC="$(printf '%s' "$DB_PASSWORD" | sed -e 's/[\\&|]/\\&/g')"
     sed -e "s|__DB_NAME__|$DB_NAME|" \
         -e "s|__DB_USER__|$DB_USER|" \
-        -e "s|__DB_PASSWORD__|$DB_PASSWORD|" \
+        -e "s|__DB_PASSWORD__|$DB_PASSWORD_ESC|" \
         -e "s|__DOMAIN__|$DOMAIN|" \
         -e "s|__SSL__|$SSL_FLAG|" \
         -e "s|__SCHEME__|$SCHEME|" \
