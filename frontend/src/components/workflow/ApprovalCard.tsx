@@ -1,4 +1,4 @@
-import { Check, Clock, X } from 'lucide-react';
+import { Check, ChevronRight, Clock, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Avatar } from '../ui/Avatar';
 import { Badge } from '../ui/Badge';
@@ -60,16 +60,23 @@ export function ApprovalCard({
         <SlaChip sla={item.sla_due_at} overdue={item.is_overdue} />
       </div>
 
-      {canDecide && (
-        <div className="flex shrink-0 gap-1">
-          <Button variant="ghost" size="sm" aria-label="Approve" onClick={onApprove}>
-            <Check className="h-4 w-4 text-success" />
-          </Button>
-          <Button variant="ghost" size="sm" aria-label="Reject" onClick={onReject}>
-            <X className="h-4 w-4 text-danger" />
-          </Button>
-        </div>
-      )}
+      <div className="flex shrink-0 gap-1">
+        {/* The card body opens the detail too, but a click target with no affordance reads
+            as decoration — approvers were deciding without ever seeing the request. */}
+        <Button variant="ghost" size="sm" aria-label="View details" onClick={onOpen}>
+          <ChevronRight className="h-4 w-4 text-gray-400" />
+        </Button>
+        {canDecide && (
+          <>
+            <Button variant="ghost" size="sm" aria-label="Approve" onClick={onApprove}>
+              <Check className="h-4 w-4 text-success" />
+            </Button>
+            <Button variant="ghost" size="sm" aria-label="Reject" onClick={onReject}>
+              <X className="h-4 w-4 text-danger" />
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

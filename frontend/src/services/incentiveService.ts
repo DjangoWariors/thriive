@@ -221,6 +221,11 @@ export const incentiveService = {
     return data;
   },
 
+  async getException(id: number): Promise<PayoutException> {
+    const { data } = await api.get<PayoutException>(`${BASE}/exceptions/${id}/`);
+    return data;
+  },
+
   async createException(payload: ExceptionPayload): Promise<PayoutException> {
     const { data } = await api.post<PayoutException>(`${BASE}/exceptions/`, payload);
     return data;

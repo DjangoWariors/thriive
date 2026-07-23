@@ -633,7 +633,12 @@ class ExceptionService:
             raise BusinessError(f'Only pending exceptions can be rejected (status: {exc.status}).')
         exc.status = PayoutException.REJECTED
         exc.rejection_reason = reason
-        exc.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        # approved_by/approved_at are the decision columns, not approval-only ones: a
+        # rejection that records no decider leaves the request unaccountable.
+        exc.approved_by = actor
+        exc.approved_at = timezone.now()
+        exc.save(update_fields=['status', 'rejection_reason', 'approved_by', 'approved_at',
+                                'updated_at'])
         AuditService.log('reject', 'incentives.PayoutException', exc.pk, actor,
                          {'reason': reason})
         ExceptionService._notify_resolved_if_terminal(exc)

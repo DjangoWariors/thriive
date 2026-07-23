@@ -59,16 +59,33 @@ class TestExceptionLifecycle:
         assert exc.status == PayoutException.APPROVED
         assert exc.approved_by == checker
 
+    def test_serializer_names_both_actors(self, tree, period):
+        """The detail drawer prints who raised and who decided — an id there is unreadable."""
+        from apps.incentives.serializers import PayoutExceptionSerializer
+        from apps.accounts.models import User
+
+        maker = User.objects.create_user(email='mk@x.com', password='pass', first_name='Asha')
+        checker = User.objects.create_user(email='ck@x.com', password='pass', first_name='Ravi')
+        exc = mk_exception(tree['ase1'], period, status=PayoutException.PENDING,
+                           requested_by=maker)
+        data = PayoutExceptionSerializer(ExceptionService.approve(exc, checker)).data
+        assert data['requested_by_name'] == 'Asha'
+        assert data['approved_by_name'] == 'Ravi'
+
     def test_only_pending_can_be_approved(self, tree, period):
         exc = mk_exception(tree['ase1'], period)  # already approved
         with pytest.raises(BusinessError, match='pending'):
             ExceptionService.approve(exc, _user('c2@x.com'))
 
     def test_reject_with_reason(self, tree, period):
+        checker = _user('c3@x.com')
         exc = mk_exception(tree['ase1'], period, status=PayoutException.PENDING)
-        exc = ExceptionService.reject(exc, _user('c3@x.com'), 'not justified')
+        exc = ExceptionService.reject(exc, checker, 'not justified')
         assert exc.status == PayoutException.REJECTED
         assert exc.rejection_reason == 'not justified'
+        # A rejection is a decision: it must name its decider, like an approval does.
+        assert exc.approved_by == checker
+        assert exc.approved_at is not None
 
     def test_entity_type_must_match_scheme(self, tree, period, ase_type, kpis):
         scheme = mk_scheme(ase_type, kpis)
@@ -186,3 +203,50 @@ class TestVariablePay:
         assert 'eligible_working_days cannot be negative.' in result['errors'][1]['errors']
         from apps.incentives.models import VariablePay
         assert VariablePay.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestImpactAmountConfidentiality:
+    """The impact figure is the payee's variable pay. Exception approval must not become a
+    side channel around payout confidentiality, so the amount is clamped on every read."""
+
+    @staticmethod
+    def _grant(user, perms, code='imp_test'):
+        from datetime import date
+
+        from apps.accounts.models import Role, UserRole
+        role = Role.objects.create(code=code, name=code, permissions=perms)
+        UserRole.objects.create(user=user, role=role, effective_from=date.today())
+
+    @staticmethod
+    def _impact(exc, user):
+        from types import SimpleNamespace
+
+        from apps.incentives.serializers import PayoutExceptionSerializer
+        return PayoutExceptionSerializer(
+            exc, context={'request': SimpleNamespace(user=user)},
+        ).data['impact_amount']
+
+    @pytest.fixture
+    def exc_with_vp(self, tree, period):
+        from apps.incentives.models import VariablePay
+        VariablePay.objects.create(entity=tree['ase1'], target_period=period,
+                                   amount=D('90000.00'))
+        return mk_exception(tree['ase1'], period, status=PayoutException.PENDING)
+
+    def test_payout_admin_sees_the_amount(self, exc_with_vp):
+        approver = _user('payadmin@x.com')
+        self._grant(approver, {'exception_management': 'full', 'final_payout': 'view_all'})
+        assert D(self._impact(exc_with_vp, approver)) == D('90000.00')
+
+    def test_exception_approver_without_payout_access_sees_nothing(self, exc_with_vp):
+        """Sales ops can route and decide the exception — they just can't read the pay."""
+        approver = _user('salesops@x.com')
+        self._grant(approver, {'exception_management': 'full'}, code='imp_test2')
+        assert self._impact(exc_with_vp, approver) is None
+
+    def test_no_variable_pay_on_file_means_no_figure(self, tree, period):
+        admin = _user('payadmin2@x.com')
+        self._grant(admin, {'final_payout': 'full'}, code='imp_test3')
+        exc = mk_exception(tree['ase1'], period, status=PayoutException.PENDING)
+        assert self._impact(exc, admin) is None

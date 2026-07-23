@@ -85,6 +85,20 @@ def highest_level(user, permission: str) -> str:
     return best
 
 
+def may_see_payout_figures(user) -> bool:
+    """May this user be shown a money amount derived from payouts?
+
+    Payout confidentiality is structural (see accounts/permission_catalog.py): a manager
+    sees team achievements but never team payouts. Any figure that travels outside the
+    payout endpoints — a workflow's impact amount, an exception's pay at stake — has to
+    pass through here, or it becomes a side channel around that rule.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return bool(getattr(user, 'is_superuser', False)) or \
+        highest_level(user, 'final_payout') in ('full', 'view_all')
+
+
 class RBACPermission(BasePermission):
     """
     Checks `view.required_permission` against the user's active Role permissions.

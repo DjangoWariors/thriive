@@ -288,6 +288,7 @@ class PayoutExceptionSerializer(serializers.ModelSerializer):
     scheme_code = serializers.CharField(source='scheme.code', read_only=True, default=None)
     category_name = serializers.CharField(source='category_ref.name', read_only=True, default=None)
     requested_by_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
     impact_amount = serializers.SerializerMethodField()
     workflow_id = serializers.SerializerMethodField()
     workflow_status = serializers.SerializerMethodField()
@@ -302,15 +303,22 @@ class PayoutExceptionSerializer(serializers.ModelSerializer):
                   'category_name', 'sales_kpi_action', 'execution_kpi_action',
                   'gatekeeper_action', 'reason', 'reference_date', 'parent',
                   'children_count', 'status', 'requested_by',
-                  'requested_by_name', 'approved_by', 'approved_at', 'rejection_reason',
+                  'requested_by_name', 'approved_by', 'approved_by_name', 'approved_at',
+                  'rejection_reason',
                   'impact_amount', 'workflow_id', 'workflow_status', 'current_step_name',
                   'created_at']
         read_only_fields = ['id', 'status', 'category_ref', 'parent', 'children_count',
                             'requested_by', 'approved_by',
                             'approved_at', 'rejection_reason', 'created_at']
 
-    def get_requested_by_name(self, obj):
-        user = obj.requested_by
+    def get_requested_by_name(self, obj) -> str | None:
+        return self._display_name(obj.requested_by)
+
+    def get_approved_by_name(self, obj) -> str | None:
+        return self._display_name(obj.approved_by)
+
+    @staticmethod
+    def _display_name(user):
         if user is None:
             return None
         return f'{user.first_name} {user.last_name}'.strip() or user.email
@@ -324,8 +332,24 @@ class PayoutExceptionSerializer(serializers.ModelSerializer):
         return obj._wf_instance
 
     def get_impact_amount(self, obj) -> str | None:
+        """The variable pay this exception's treatment governs — withheld from readers who
+        may not see payout figures, so exception approval can't become a way to learn pay.
+
+        Prefers the workflow's raise-time snapshot; falls back to a live lookup for
+        exceptions raised before their VP was uploaded, or with no workflow at all.
+        """
+        from apps.core.permissions import may_see_payout_figures
+
+        request = self.context.get('request')
+        if not may_see_payout_figures(getattr(request, 'user', None)):
+            return None
         inst = self._instance(obj)
-        return (inst.context_data or {}).get('impact_amount') if inst else None
+        snapshot = (inst.context_data or {}).get('impact_amount') if inst else None
+        if snapshot:
+            return snapshot
+        from .adapters import exception_pay_at_stake
+        amount = exception_pay_at_stake(obj)
+        return str(amount) if amount is not None else None
 
     def get_workflow_id(self, obj) -> int | None:
         inst = self._instance(obj)

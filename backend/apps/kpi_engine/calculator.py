@@ -32,6 +32,14 @@ _ZERO = Value(Decimal('0'), output_field=DecimalField(max_digits=24, decimal_pla
 # aggregate runs unrestricted and the ownership fold drops unowned nodes.
 _IN_LIST_MAX = 10_000
 
+# The Transaction columns a KPI may measure — deliberately not discount_amount / tax_amount, which
+# stay on the model for reports/import but are never a KPI measure. AMOUNT_FIELDS are summed;
+# DIMENSION_FIELDS are what a distinct count groups by. The split is load-bearing: dimensions are blank-defaulted
+# CharFields (hence _exclude_blank below), and excluding '' on a numeric column raises
+# decimal.InvalidOperation. Imported by services.py so validation and computation can't drift.
+AMOUNT_FIELDS = frozenset({'net_amount', 'gross_amount', 'quantity', 'base_quantity'})
+DIMENSION_FIELDS = frozenset({'outlet_code', 'bill_ref', 'sku_code'})
+
 _BOOLEAN_OPS = {
     'gte': lambda a, b: a >= b,
     'gt': lambda a, b: a > b,
@@ -39,6 +47,12 @@ _BOOLEAN_OPS = {
     'lt': lambda a, b: a < b,
     'eq': lambda a, b: a == b,
 }
+
+
+def _exclude_blank(qs, field):
+    """Drop rows with no key for a distinct count. A misconfigured KPI can name an amount
+    column here; skipping the filter keeps it a wrong-but-finite number instead of a 500."""
+    return qs.exclude(**{field: ''}) if field in DIMENSION_FIELDS else qs
 
 
 class KPICalculator:
@@ -265,7 +279,7 @@ class KPICalculator:
 
         qs = self._apply_net_row_filter(qs, net)
         if agg == 'count_distinct':
-            return Decimal(qs.exclude(**{field: ''}).values(field).distinct().count())
+            return Decimal(_exclude_blank(qs, field).values(field).distinct().count())
         return Decimal(qs.count())  # count
 
     def _grouped_aggregate(self, measure_config: dict, node_ids, window) -> dict[int, Decimal]:
@@ -289,7 +303,7 @@ class KPICalculator:
 
         qs = self._apply_net_row_filter(qs, net)
         if agg == 'count_distinct':
-            rows = qs.exclude(**{field: ''}).values('attributed_node_id').annotate(v=Count(field, distinct=True))
+            rows = _exclude_blank(qs, field).values('attributed_node_id').annotate(v=Count(field, distinct=True))
         else:
             rows = qs.values('attributed_node_id').annotate(v=Count('id'))
         return {r['attributed_node_id']: Decimal(r['v']) for r in rows}
@@ -301,7 +315,7 @@ class KPICalculator:
         op = _BOOLEAN_OPS.get(having.get('operator', 'gt'), _BOOLEAN_OPS['gt'])
         threshold = Decimal(str(having.get('value', 0)))
         rows = (
-            qs.exclude(**{field: ''})
+            _exclude_blank(qs, field)
             .values(field)
             .annotate(
                 s=Coalesce(Sum(hfield, filter=_SALE_Q), _ZERO),
@@ -405,7 +419,7 @@ class KPICalculator:
         net = mc.get('net_logic') or 'all'
 
         qualifying_qs = self._apply_net_row_filter(self._scoped_qs(mc, entity_ids, window), net)
-        qualifying = set(qualifying_qs.exclude(**{group_field: ''}).values_list(group_field, flat=True).distinct())
+        qualifying = set(_exclude_blank(qualifying_qs, group_field).values_list(group_field, flat=True).distinct())
         if not qualifying:
             return Decimal('0')
 

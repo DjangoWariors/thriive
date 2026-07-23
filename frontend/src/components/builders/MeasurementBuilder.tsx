@@ -116,6 +116,24 @@ export function MeasurementBuilder({ value, onChange, lockAggregation = false, t
   const onFieldChange = (field: string) =>
     set({ measure_field: field, ...(isWeighted ? { group_field: field } : {}) });
 
+  // Sum and distinct offer disjoint field lists, so the field must move with the aggregation.
+  // Carrying it across is silent rather than obvious: React falls back to selecting the first
+  // option when the value matches none, so the user reads "Shops / outlets" while the config
+  // still says net_amount — and the backend gets "count distinct values of a decimal column".
+  const onAggregationChange = (next: Aggregation) => {
+    const nowDistinct = next === 'count_distinct';
+    if (isDistinct === nowDistinct) return set({ aggregation: next });
+    set({
+      aggregation: next,
+      measure_field: nowDistinct ? 'outlet_code' : 'net_amount',
+      // These only mean anything under a distinct count.
+      having: undefined,
+      group_field: undefined,
+      weight_field: undefined,
+      weight_scope: undefined,
+    });
+  };
+
   const toggleWeighted = (on: boolean) => {
     if (on) {
       set({
@@ -149,7 +167,7 @@ export function MeasurementBuilder({ value, onChange, lockAggregation = false, t
               aria-label="Aggregation"
               value={aggSelectValue}
               disabled={lockAggregation}
-              onChange={(e) => set({ aggregation: e.target.value as Aggregation })}
+              onChange={(e) => onAggregationChange(e.target.value as Aggregation)}
               options={AGGREGATIONS}
             />
           </Field>

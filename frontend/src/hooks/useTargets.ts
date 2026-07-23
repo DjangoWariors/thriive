@@ -6,6 +6,7 @@ import type {
   RecipePayload,
   RevisionPolicyPayload,
 } from '../types/target';
+import { isRunActive } from '../utils/planRun';
 
 const targetKeys = {
   periods: () => ['targets', 'periods'] as const,
@@ -163,10 +164,11 @@ export function useRuns(params: { plan?: number; kind?: string; status?: string 
     queryFn: () => targetService.listRuns(params ?? undefined),
     enabled: params !== null,
     // Runs stage asynchronously (Celery): poll while one is in flight so the staged
-    // banner and baseline results appear without a manual refresh.
+    // banner and baseline results appear without a manual refresh. A run that never
+    // reports back goes stale rather than pending forever — stop polling for it.
     refetchInterval: (query) => {
       const rows = query.state.data?.results ?? [];
-      return rows.some((r) => r.status === 'pending' || r.status === 'running') ? 3000 : false;
+      return rows.some(isRunActive) ? 3000 : false;
     },
   });
 }

@@ -28,6 +28,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Tabs } from '../../components/ui/Tabs';
 import { TableSkeleton } from '../../components/ui/Skeleton';
+import { isRunActive, runNeedsAttention } from '../../utils/planRun';
 
 export default function PlanWorkspacePage() {
   const { id } = useParams();
@@ -68,8 +69,14 @@ function AdminWorkspace({ plan, onBack }: { plan: TargetPlan; onBack: () => void
   const stagedOf = (kind: RunKind): PlanRun | null =>
     runRows.find((r) => r.status === 'staged' && r.kind === kind) ?? null;
   const runningOf = (kind: RunKind): boolean =>
-    runRows.some((r) => r.kind === kind && (r.status === 'pending' || r.status === 'running'));
-  const hasActiveRun = runRows.some((r) => r.status === 'pending' || r.status === 'running');
+    runRows.some((r) => r.kind === kind && isRunActive(r));
+  // Rows arrive newest-first, so the latest run of a kind is the one that speaks for it:
+  // surface it only when it failed or stopped reporting back.
+  const problemOf = (kind: RunKind): PlanRun | null => {
+    const latest = runRows.find((r) => r.kind === kind);
+    return latest && runNeedsAttention(latest) ? latest : null;
+  };
+  const hasActiveRun = runRows.some(isRunActive);
   const wasActive = useRef(false);
   useEffect(() => {
     // A run settling changes plan progress + baseline suggestions — refresh the plan.
@@ -100,10 +107,11 @@ function AdminWorkspace({ plan, onBack }: { plan: TargetPlan; onBack: () => void
       </p>
     </Card>
   ) : active === 'top' ? (
-    <TopNumbersStage plan={plan} stagedBaseline={stagedOf('baseline')}
+    <TopNumbersStage plan={plan} stagedBaseline={stagedOf('baseline')} problemRun={problemOf('baseline')}
                      calculating={runningOf('baseline')} editable={editable} />
   ) : active === 'spatial' || active === 'product' ? (
     <SplitStage plan={plan} kind={active} stagedRun={stagedOf(active)} running={runningOf(active)}
+                problemRun={problemOf(active)}
                 editable={editable} done={stages.find((s) => s.key === active)?.done ?? false} />
   ) : active === 'review' ? (
     <ReviewStage plan={plan} />

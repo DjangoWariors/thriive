@@ -4,6 +4,7 @@ import type { PlanRun, TargetPlan } from '../../types/target';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { StagedRunReview } from './StagedRunReview';
+import { RunProblemBanner } from './RunProblemBanner';
 import { notify } from '../../utils/notify';
 import { apiErrorMessage } from '../../utils/apiError';
 
@@ -23,11 +24,12 @@ const COPY = {
 } as const;
 
 /** Stages 2/3 — generate a split and review/apply it in the same panel. */
-export function SplitStage({ plan, kind, stagedRun, running, editable, done }: {
+export function SplitStage({ plan, kind, stagedRun, running, problemRun, editable, done }: {
   plan: TargetPlan;
   kind: 'spatial' | 'product';
   stagedRun: PlanRun | null;
   running: boolean;
+  problemRun: PlanRun | null;
   editable: boolean;
   done: boolean;
 }) {
@@ -59,6 +61,7 @@ export function SplitStage({ plan, kind, stagedRun, running, editable, done }: {
             </Button>
           )}
         </div>
+        {problemRun && <RunProblemBanner run={problemRun} />}
         {!editable && !done && (
           <p className="mt-2 text-xs text-gray-400">Splits are generated while the plan is a draft.</p>
         )}

@@ -46,13 +46,40 @@ def _subject_summary(instance) -> dict:
     return adapter.summary(subject) if subject is not None else {}
 
 
-class WorkflowInstanceSerializer(serializers.ModelSerializer):
+#: Money an adapter puts in its payload so approvers can weigh a decision. Payout
+#: confidentiality doesn't stop at the payout endpoints — an approval inbox that printed
+#: these to everyone routed a request would be a way around it.
+CONFIDENTIAL_PAYLOAD_KEYS = frozenset({'impact_amount', 'total_payout'})
+
+
+class ConfidentialPayloadMixin:
+    """Redacts payout figures from the adapter-supplied payloads for readers who may not
+    see them. The rest of the payload — who, what, why — is what routing is based on and
+    stays visible, so an approver without payout access can still act on the request."""
+
+    def _redact(self, payload: dict) -> dict:
+        from apps.core.permissions import may_see_payout_figures
+
+        request = self.context.get('request')
+        if may_see_payout_figures(getattr(request, 'user', None)):
+            return payload
+        return {k: v for k, v in payload.items() if k not in CONFIDENTIAL_PAYLOAD_KEYS}
+
+    def get_context_data(self, obj) -> dict:
+        return self._redact(obj.context_data or {})
+
+    def get_subject_summary(self, obj) -> dict:
+        return self._redact(_subject_summary(obj))
+
+
+class WorkflowInstanceSerializer(ConfidentialPayloadMixin, serializers.ModelSerializer):
     definition_code = serializers.CharField(source='definition.code', read_only=True)
     definition_name = serializers.CharField(source='definition.name', read_only=True)
     initiated_by_name = serializers.SerializerMethodField()
     anchor_entity_name = serializers.CharField(source='anchor_entity.name', read_only=True, default=None)
     steps = WorkflowStepSerializer(many=True, read_only=True)
     actions = WorkflowActionSerializer(many=True, read_only=True)
+    context_data = serializers.SerializerMethodField()
     subject_summary = serializers.SerializerMethodField()
     current_step_name = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -68,9 +95,6 @@ class WorkflowInstanceSerializer(serializers.ModelSerializer):
     def get_initiated_by_name(self, obj) -> str | None:
         return _full_name(obj.initiated_by)
 
-    def get_subject_summary(self, obj) -> dict:
-        return _subject_summary(obj)
-
     def get_current_step_name(self, obj) -> str | None:
         step = next((s for s in obj.steps.all() if s.status in WorkflowStep.OPEN_STATUSES), None)
         return step.name if step else None
@@ -79,12 +103,13 @@ class WorkflowInstanceSerializer(serializers.ModelSerializer):
         return bool(obj.sla_due_at and obj.sla_due_at < timezone.now())
 
 
-class PendingApprovalSerializer(serializers.ModelSerializer):
+class PendingApprovalSerializer(ConfidentialPayloadMixin, serializers.ModelSerializer):
     """Lightweight inbox row."""
     definition_code = serializers.CharField(source='definition.code', read_only=True)
     initiated_by_name = serializers.SerializerMethodField()
     anchor_entity_name = serializers.CharField(source='anchor_entity.name', read_only=True, default=None)
     current_step_name = serializers.SerializerMethodField()
+    context_data = serializers.SerializerMethodField()
     subject_summary = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
 
@@ -101,9 +126,6 @@ class PendingApprovalSerializer(serializers.ModelSerializer):
     def get_current_step_name(self, obj) -> str | None:
         step = next((s for s in obj.steps.all() if s.status in WorkflowStep.OPEN_STATUSES), None)
         return step.name if step else None
-
-    def get_subject_summary(self, obj) -> dict:
-        return _subject_summary(obj)
 
     def get_is_overdue(self, obj) -> bool:
         return bool(obj.sla_due_at and obj.sla_due_at < timezone.now())

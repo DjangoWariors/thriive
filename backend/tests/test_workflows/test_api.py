@@ -3,7 +3,7 @@ import pytest
 from apps.incentives.models import PayoutException
 from apps.workflows.services import WorkflowService
 
-from .conftest import client_for, make_exception, make_user
+from .conftest import client_for, grant_role, make_exception, make_user
 
 pytestmark = pytest.mark.django_db
 
@@ -73,3 +73,31 @@ class TestDecisions:
         )
         assert resp.status_code == 200
         assert set(resp.data['processed']) == {i1.pk, i2.pk}
+
+
+class TestPayoutFigureRedaction:
+    """An adapter puts money in its payload so approvers can weigh the decision. That figure
+    is still payout data: the inbox must not hand it to everyone a request is routed to."""
+
+    @staticmethod
+    def _with_vp(org, period, amount='75000.00'):
+        from decimal import Decimal
+
+        from apps.incentives.models import VariablePay
+        VariablePay.objects.create(entity=org['ase1'], target_period=period,
+                                   amount=Decimal(amount))
+        return _raise(org, period)
+
+    def test_approver_without_payout_access_gets_no_amount(self, org, period, seeded):
+        self._with_vp(org, period)
+        resp = client_for(org['nsm_user']).get(f'{BASE}pending/')
+        assert resp.status_code == 200
+        assert 'impact_amount' not in resp.data['results'][0]['context_data']
+
+    def test_payout_admin_gets_the_amount(self, org, period, seeded):
+        _, inst = self._with_vp(org, period)
+        grant_role(org['nsm_user'], 'pay_admin_wf',
+                   {'workflow_management': 'full', 'final_payout': 'view_all'})
+        resp = client_for(org['nsm_user']).get(f'{BASE}{inst.pk}/')
+        assert resp.status_code == 200
+        assert resp.data['context_data']['impact_amount'] == '75000.00'

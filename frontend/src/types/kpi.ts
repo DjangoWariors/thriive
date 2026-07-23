@@ -1,5 +1,3 @@
-import type { BulkJob } from './jobs';
-
 export type KpiType =
   | 'value'
   | 'count'
@@ -303,5 +301,3 @@ export interface TransactionListParams {
   date_to?: string;
   page?: number;
 }
-
-export type { BulkJob };

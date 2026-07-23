@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Eye, Plus, Search, X } from 'lucide-react';
 import { usePeriodSelector } from '../../hooks/usePeriodSelector';
 import { useEntitySearch } from '../../hooks/useEntities';
 import { useRBAC } from '../../hooks/useRBAC';
@@ -22,6 +22,8 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Textarea } from '../../components/ui/Textarea';
 import {PageHeader} from '../../components/ui/PageHeader';
 import {TableSkeleton} from '../../components/ui/Skeleton';
+import { ExceptionDetailDrawer } from '../../components/incentives/ExceptionDetailDrawer';
+import { ACTION_PHRASES, actionSummary } from '../../utils/exceptionText';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { notify } from '../../utils/notify';
 import { apiErrorMessage } from '../../utils/apiError';
@@ -35,30 +37,12 @@ const ACTION_OPTIONS: { value: KpiExceptionAction; label: string }[] = [
   { value: 'zero', label: 'Pay nothing' },
 ];
 
-const ACTION_PHRASES: Record<KpiExceptionAction, string> = {
-  actual_performance: 'computed normally',
-  default_1x: 'paid as if exactly on target (1×)',
-  zero: 'not paid',
-};
-
 const STATUS_FILTERS: { value: '' | ExceptionStatus; label: string }[] = [
   { value: '', label: 'All statuses' },
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
 ];
-
-function actionSummary(e: PayoutException): string {
-  const parts: string[] = [];
-  if (e.sales_kpi_action !== 'actual_performance') {
-    parts.push(`sales ${e.sales_kpi_action === 'default_1x' ? '1×' : 'zero'}`);
-  }
-  if (e.execution_kpi_action !== 'actual_performance') {
-    parts.push(`execution ${e.execution_kpi_action === 'default_1x' ? '1×' : 'zero'}`);
-  }
-  if (e.gatekeeper_action === 'exempted') parts.push('gatekeeper exempted');
-  return parts.length ? parts.join(' · ') : 'actuals';
-}
 
 export default function ExceptionsPage() {
   const { selectedPeriodId } = usePeriodSelector();
@@ -68,6 +52,7 @@ export default function ExceptionsPage() {
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<'' | ExceptionStatus>('');
+  const [detailId, setDetailId] = useState<number | null>(null);
   const [raising, setRaising] = useState(false);
   const [rejecting, setRejecting] = useState<PayoutException | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -140,10 +125,10 @@ export default function ExceptionsPage() {
                 rowKey={(e) => e.id}
                 columns={[
                   {header: 'Person', render: (e) => (
-                    <>
-                      <p className="font-medium text-gray-900">{e.entity_name}</p>
+                    <button type="button" className="text-left" onClick={() => setDetailId(e.id)}>
+                      <p className="font-medium text-primary hover:underline">{e.entity_name}</p>
                       <p className="text-xs text-gray-500">{e.entity_code}</p>
-                    </>
+                    </button>
                   )},
                   {header: 'Category', render: (e) => (
                     <>
@@ -156,7 +141,8 @@ export default function ExceptionsPage() {
                     </>
                   )},
                   {header: 'Treatment', render: (e) => <span className="text-xs text-gray-600">{actionSummary(e)}</span>},
-                  {header: 'Impact', align: 'right', render: (e) => (
+                  // Variable pay at stake — blank for users without payout access.
+                  {header: 'VP at stake', align: 'right', render: (e) => (
                     <span className="text-gray-700">
                       {e.impact_amount != null && e.impact_amount !== ''
                         ? formatCurrency(e.impact_amount)
@@ -188,6 +174,10 @@ export default function ExceptionsPage() {
                   )},
                   {header: 'Actions', align: 'right', render: (e) => (
                     <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" aria-label={`Open details for ${e.entity_name}`}
+                              onClick={() => setDetailId(e.id)}>
+                        <Eye className="h-4 w-4 text-gray-400" />
+                      </Button>
                       {canDecide && e.status === 'pending' && (
                         <>
                           <Button variant="ghost" size="sm" aria-label={`Approve exception for ${e.entity_name}`}
@@ -217,6 +207,16 @@ export default function ExceptionsPage() {
           <RaiseModal open={raising} onClose={() => setRaising(false)} periodId={selectedPeriodId} />
         </>
       )}
+
+      {/* Decisions taken in the drawer reuse the page's confirm dialogs, so approving from
+          the row and from the detail behave identically. */}
+      <ExceptionDetailDrawer
+        id={detailId}
+        onClose={() => setDetailId(null)}
+        onApprove={canDecide ? setApproving : undefined}
+        onReject={canDecide ? (e) => { setRejectReason(''); setRejecting(e); } : undefined}
+        onWithdraw={canRaise ? setWithdrawing : undefined}
+      />
 
       <ConfirmDialog
         open={approving !== null}

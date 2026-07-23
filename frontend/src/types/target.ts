@@ -241,6 +241,8 @@ export interface PlanRun {
   config_snapshot: Record<string, unknown>;
   stats: Record<string, unknown>;
   job: number | null;
+  /** The worker's failure reason — populated only for a failed run. */
+  error: string;
   committed_by: number | null;
   committed_at: string | null;
   created_at: string;

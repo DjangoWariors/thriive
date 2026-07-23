@@ -10,7 +10,24 @@ from django.utils import timezone
 from apps.workflows import adapters as wf
 from apps.workflows.adapters import SubjectAdapter
 
-from .models import PayoutException, PayoutRun
+from .models import PayoutException, PayoutRun, VariablePay
+
+
+def exception_pay_at_stake(exc) -> object | None:
+    """The money an exception's treatment governs: the person's variable pay for the period.
+
+    Not a simulated payout delta — computing that needs achievements that often don't exist
+    yet when the exception is raised, and it would change under the approver's feet. The VP
+    is the pot every multiplier in that month is applied to, so it is the honest ceiling on
+    what this decision moves. ``None`` when no VP is on file yet.
+    """
+    vp = (
+        VariablePay.objects
+        .filter(entity_id=exc.entity_id, target_period_id=exc.target_period_id, is_active=True)
+        .values_list('amount', flat=True)
+        .first()
+    )
+    return vp
 
 
 class PayoutExceptionAdapter(SubjectAdapter):
@@ -23,7 +40,7 @@ class PayoutExceptionAdapter(SubjectAdapter):
         return subject.entity
 
     def build_context(self, subject) -> dict:
-        return {
+        context = {
             'kind': 'payout_exception',
             'category_code': subject.category or '',
             'entity_id': subject.entity_id,
@@ -35,6 +52,11 @@ class PayoutExceptionAdapter(SubjectAdapter):
             'reason': subject.reason,
             'title': f'{subject.entity.name} — {subject.category or "exception"}',
         }
+        amount = exception_pay_at_stake(subject)
+        if amount is not None:
+            # Confidential: serializers strip this for readers without payout access.
+            context['impact_amount'] = str(amount)
+        return context
 
     def summary(self, subject) -> dict:
         return {
@@ -66,7 +88,11 @@ class PayoutExceptionAdapter(SubjectAdapter):
         last = instance.actions.filter(action='reject').order_by('-created_at').first()
         subject.status = PayoutException.REJECTED
         subject.rejection_reason = last.comments if last else ''
-        subject.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        # Mirror on_approved: the decision columns record who settled the request either way.
+        subject.approved_by_id = last.action_by_id if last else None
+        subject.approved_at = timezone.now()
+        subject.save(update_fields=['status', 'rejection_reason', 'approved_by', 'approved_at',
+                                    'updated_at'])
 
 
 class PayoutRunAdapter(SubjectAdapter):
