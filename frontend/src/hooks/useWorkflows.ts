@@ -17,10 +17,14 @@ function useInvalidate() {
   };
 }
 
+// 'instance' matters because the detail drawer stays open across a decision — without it
+// the stepper and timeline keep showing the state from before the click.
 const WF_INVALIDATES: string[][] = [
   ['workflows', 'pending'],
   ['workflows', 'pending-count'],
+  ['workflows', 'instance'],
   ['incentives', 'exceptions'],
+  ['incentives', 'exception'],
 ];
 
 export function usePendingApprovals(params?: PendingParams) {

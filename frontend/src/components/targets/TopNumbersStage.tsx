@@ -9,6 +9,7 @@ import { Input } from '../ui/Input';
 import { notify } from '../../utils/notify';
 import { makeUnitFormatter } from '../../utils/format';
 import { apiErrorMessage } from '../../utils/apiError';
+import { RunProblemBanner } from './RunProblemBanner';
 
 /** "571000.0000" → "571000": inputs shouldn't echo the column's storage precision. */
 function trimZeros(v: string | null): string {
@@ -20,10 +21,11 @@ function trimZeros(v: string | null): string {
 /** Stage 1 — set the number each KPI cascades from. "Calculate suggestion" runs the
  * baseline behind the scenes: the suggestion lands on the plan the moment the run stages,
  * so the staged run itself is settled (discarded) silently instead of surfacing a banner. */
-export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }: {
+export function TopNumbersStage({ plan, stagedBaseline, calculating, problemRun, editable }: {
   plan: TargetPlan;
   stagedBaseline: PlanRun | null;
   calculating: boolean;
+  problemRun: PlanRun | null;
   editable: boolean;
 }) {
   const startRun = useStartRun();
@@ -44,7 +46,9 @@ export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }:
     }
   }, [stagedBaseline, discard]);
 
-  const busy = calculating || startRun.isPending || (stagedBaseline !== null);
+  // The staged baseline is settled by the effect above — stay busy until it clears, but never
+  // past a failed discard, or the button spins forever with the suggestion already on the plan.
+  const busy = calculating || startRun.isPending || (stagedBaseline !== null && !discard.isError);
   const hasSuggestions = plan.kpis.some((k) => k.derived_top_value !== null);
 
   return (
@@ -54,7 +58,7 @@ export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }:
           <h3 className="text-sm font-semibold text-gray-800">Top numbers</h3>
           <p className="mt-0.5 text-xs text-gray-500">
             Set the number each KPI cascades from. The suggestion (recent history × growth,
-            per each KPI's baseline) is your sanity anchor — you can type any number.
+            per each KPI's baseline) is your starting point - you can type any number.
           </p>
         </div>
         {editable && (
@@ -66,6 +70,8 @@ export function TopNumbersStage({ plan, stagedBaseline, calculating, editable }:
           </Button>
         )}
       </div>
+
+      {problemRun && <RunProblemBanner run={problemRun} />}
 
       <div className="mt-4 max-w-xl space-y-3">
         {plan.kpis.map((k) => (

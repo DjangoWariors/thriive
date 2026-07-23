@@ -20,6 +20,7 @@ const incentiveKeys = {
   payout: (id: number) => ['incentives', 'payout', id] as const,
   exceptions: (params?: ExceptionListParams) =>
     ['incentives', 'exceptions', params ?? {}] as const,
+  exception: (id: number) => ['incentives', 'exception', id] as const,
 };
 
 function useInvalidate() {
@@ -146,6 +147,14 @@ export function usePayoutExceptions(params?: ExceptionListParams) {
   });
 }
 
+export function useException(id: number | null) {
+  return useQuery({
+    queryKey: incentiveKeys.exception(id ?? 0),
+    queryFn: () => incentiveService.getException(id as number),
+    enabled: id !== null && id > 0,
+  });
+}
+
 export function useExceptionCategories() {
   return useQuery({
     queryKey: ['incentives', 'exception-categories'],
@@ -154,7 +163,9 @@ export function useExceptionCategories() {
   });
 }
 
-const EXCEPTION_INVALIDATES: string[][] = [['incentives', 'exceptions']];
+// The open detail drawer reads its own record, so a decision must refresh both the
+// list and that single-record key or the drawer keeps showing "pending".
+const EXCEPTION_INVALIDATES: string[][] = [['incentives', 'exceptions'], ['incentives', 'exception']];
 
 export function useCreateException() {
   const invalidate = useInvalidate();

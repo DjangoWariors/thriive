@@ -17,7 +17,7 @@ from apps.master_data.models import SKU, SKUGroup
 from apps.master_data.services import MasterDataService
 
 from . import periods
-from .calculator import KPICalculator
+from .calculator import AMOUNT_FIELDS, DIMENSION_FIELDS, KPICalculator
 from .expressions import ExpressionError, extract_names
 from .models import (
     ExternalMetric,
@@ -575,12 +575,6 @@ def _upsert_metric_value(fields: dict) -> bool:
 
 
 # ── module helpers ──────────────────────────────────────────────────────────
-# Fields a KPI may aggregate. Deliberately excludes discount_amount / tax_amount — they remain
-# on Transaction (used by reports/import) but are not offered as KPI measures.
-_MEASURE_FIELDS = {
-    'net_amount', 'gross_amount', 'quantity', 'base_quantity',
-    'outlet_code', 'bill_ref', 'sku_code',
-}
 _AGGREGATIONS = {'sum', 'count', 'count_distinct', 'weighted_distinct'}
 # Aggregations an external-metric KPI may apply over its fact rows.
 _EXTERNAL_AGGREGATIONS = {ExternalMetric.SUM, ExternalMetric.AVG, ExternalMetric.LATEST, ExternalMetric.MAX}
@@ -591,13 +585,18 @@ def _validate_measure(cfg: dict, kpi_type, label: str) -> list[str]:
     agg = cfg.get('aggregation')
     if agg not in _AGGREGATIONS:
         errors.append(f'{label}: aggregation must be one of {", ".join(sorted(_AGGREGATIONS))}.')
-    if agg in ('sum', 'count_distinct') and cfg.get('measure_field') not in _MEASURE_FIELDS:
-        errors.append(f'{label}: a valid measure_field is required for {agg}.')
+    # An amount column can't be counted distinct (nor a text column summed) — the aggregation
+    # decides which half of the vocabulary is legal, so a UI that carries the field across an
+    # aggregation switch is caught here rather than in the query.
+    if agg == 'sum' and cfg.get('measure_field') not in AMOUNT_FIELDS:
+        errors.append(f'{label}: sum needs a numeric measure_field ({_listed(AMOUNT_FIELDS)}).')
+    if agg == 'count_distinct' and cfg.get('measure_field') not in DIMENSION_FIELDS:
+        errors.append(f'{label}: count_distinct needs a measure_field to group by ({_listed(DIMENSION_FIELDS)}).')
     if agg == 'weighted_distinct':
-        if cfg.get('group_field') not in _MEASURE_FIELDS:
-            errors.append(f'{label}: weighted_distinct needs a group_field (e.g. outlet_code).')
-        if cfg.get('weight_field') not in _MEASURE_FIELDS:
-            errors.append(f'{label}: weighted_distinct needs a weight_field (e.g. net_amount).')
+        if cfg.get('group_field') not in DIMENSION_FIELDS:
+            errors.append(f'{label}: weighted_distinct needs a group_field ({_listed(DIMENSION_FIELDS)}).')
+        if cfg.get('weight_field') not in AMOUNT_FIELDS:
+            errors.append(f'{label}: weighted_distinct needs a numeric weight_field ({_listed(AMOUNT_FIELDS)}).')
     if kpi_type == KPIDefinition.VALUE and agg != 'sum':
         errors.append(f'{label}: a value KPI must use the "sum" aggregation.')
     if kpi_type == KPIDefinition.COUNT_DISTINCT and agg not in ('count_distinct', 'weighted_distinct'):
@@ -608,9 +607,13 @@ def _validate_measure(cfg: dict, kpi_type, label: str) -> list[str]:
             errors.append(f'{label}: a "having" threshold only applies to count_distinct.')
         if having.get('operator') not in ('gte', 'gt', 'lte', 'lt', 'eq'):
             errors.append(f'{label}: having.operator must be gte/gt/lte/lt/eq.')
-        if having.get('field') not in _MEASURE_FIELDS:
-            errors.append(f'{label}: having.field must be a valid measure field.')
+        if having.get('field') not in AMOUNT_FIELDS:
+            errors.append(f'{label}: having.field must be numeric ({_listed(AMOUNT_FIELDS)}).')
     return errors
+
+
+def _listed(fields) -> str:
+    return ', '.join(sorted(fields))
 
 
 def _parse_txn_row(row: dict) -> dict:

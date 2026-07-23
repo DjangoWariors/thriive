@@ -184,12 +184,22 @@ class TargetPlanCreateSerializer(serializers.Serializer):
 class PlanRunSerializer(serializers.ModelSerializer):
     plan_code = serializers.CharField(source='plan.code', read_only=True)
     scope_node_code = serializers.CharField(source='scope_node.code', read_only=True, default=None)
+    error = serializers.SerializerMethodField()
 
     class Meta:
         model = PlanRun
         fields = ['id', 'plan', 'plan_code', 'kind', 'status', 'scope_node', 'scope_node_code',
-                  'config_snapshot', 'stats', 'job', 'committed_by', 'committed_at', 'created_at']
+                  'config_snapshot', 'stats', 'job', 'error', 'committed_by', 'committed_at',
+                  'created_at']
         read_only_fields = fields
+
+    def get_error(self, run) -> str:
+        """Why the run failed, so the workspace can say it instead of silently re-enabling
+        the button. The task records the reason on its BulkJob, not on the run."""
+        if run.status != PlanRun.FAILED or run.job_id is None:
+            return ''
+        messages = [m for row in (run.job.errors or []) for m in (row.get('errors') or [])]
+        return messages[0] if messages else ''
 
 
 class ReviewTaskSerializer(serializers.ModelSerializer):

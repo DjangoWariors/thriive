@@ -498,7 +498,7 @@ class PayoutExceptionViewSet(NodeScopedQuerysetMixin, ModelViewSet):
 
     def get_queryset(self):
         qs = PayoutException.objects.filter(is_active=True).select_related(
-            'entity', 'target_period', 'scheme', 'requested_by',
+            'entity', 'target_period', 'scheme', 'requested_by', 'approved_by',
         )
         p = self.request.query_params
         if period := p.get('period'):
@@ -513,7 +513,8 @@ class PayoutExceptionViewSet(NodeScopedQuerysetMixin, ModelViewSet):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         exc = ExceptionService.create(dict(ser.validated_data), actor=request.user)
-        return Response(PayoutExceptionSerializer(exc).data, status=status.HTTP_201_CREATED)
+        return Response(PayoutExceptionSerializer(exc, context=self.get_serializer_context()).data,
+                        status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         ExceptionService.update_pending(
@@ -535,7 +536,7 @@ class PayoutExceptionViewSet(NodeScopedQuerysetMixin, ModelViewSet):
                           'You do not have permission to approve exceptions.')
         exc = get_object_or_404(PayoutException, pk=pk, is_active=True)
         exc = ExceptionService.approve(exc, request.user)
-        return Response(PayoutExceptionSerializer(exc).data)
+        return Response(PayoutExceptionSerializer(exc, context=self.get_serializer_context()).data)
 
     @extend_schema(tags=['Incentives'], operation_id='payout_exception_reject',
                    summary='Reject a pending exception',
@@ -548,7 +549,7 @@ class PayoutExceptionViewSet(NodeScopedQuerysetMixin, ModelViewSet):
         ser.is_valid(raise_exception=True)
         exc = get_object_or_404(PayoutException, pk=pk, is_active=True)
         exc = ExceptionService.reject(exc, request.user, ser.validated_data['reason'])
-        return Response(PayoutExceptionSerializer(exc).data)
+        return Response(PayoutExceptionSerializer(exc, context=self.get_serializer_context()).data)
 
 
 # ── payout cycles (month-close) ──────────────────────────────────────────────────

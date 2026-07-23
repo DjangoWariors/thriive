@@ -1075,10 +1075,18 @@ class Command(BaseCommand):
                           f'{cur_p.code})')
 
     def _seed_exceptions(self, prev_p, cur_p):
+        from django.utils import timezone
+
         from apps.incentives.models import ExceptionCategory, PayoutException
         people = self.people
         join_day = self.prev_start + timedelta(days=21)
         cats = {c.code: c for c in ExceptionCategory.objects.filter(is_current=True)}
+        # Maker-checker needs two different people, and the detail screens show both —
+        # rows written with neither read as "raised by nobody, approved never".
+        try:
+            maker = people['HAL_ASM_DL'].user
+        except Exception:  # noqa: BLE001
+            maker = self.admin
 
         if not PayoutException.objects.filter(entity=people['HAL_XSE_DL2'],
                                               target_period=prev_p, is_active=True).exists():
@@ -1090,7 +1098,8 @@ class Command(BaseCommand):
                 execution_kpi_action=PayoutException.DEFAULT_1X,
                 gatekeeper_action=PayoutException.EXEMPTED,
                 reason=f'Joined {join_day} (after the day-20 cutoff) — defaults to 1x.',
-                status=PayoutException.APPROVED, approved_by=self.admin)
+                status=PayoutException.APPROVED, requested_by=maker,
+                approved_by=self.admin, approved_at=timezone.now())
             self.stdout.write('  [+] APPROVED new-joiner exception: Ravi Verma')
         if not PayoutException.objects.filter(entity=people['HAL_XSE_DL1'],
                                               target_period=cur_p, is_active=True).exists():
@@ -1101,7 +1110,7 @@ class Command(BaseCommand):
                 execution_kpi_action=PayoutException.ACTUAL,
                 gatekeeper_action=PayoutException.NO_EXEMPTION,
                 reason='Rohini beat carved out mid-June; target rebasing under review.',
-                status=PayoutException.PENDING)
+                status=PayoutException.PENDING, requested_by=maker)
             self.stdout.write('  [+] PENDING transfer exception: Anjali Gupta')
 
     def _seed_payout_runs(self, schemes, prev_p):

@@ -24,6 +24,7 @@ from apps.targets.models import (
     TargetPlan,
 )
 from apps.targets.plan_services import PlanService
+from apps.targets.serializers import PlanRunSerializer
 from apps.targets.services import TargetService
 
 pytestmark = pytest.mark.django_db
@@ -282,6 +283,23 @@ def test_execute_does_not_resurrect_a_discarded_run(world, plan, monkeypatch):
     run.refresh_from_db()
     assert run.status == PlanRun.DISCARDED
     assert run.allocations.count() == 0  # staged rows cleaned up, nothing committed
+
+
+def test_failed_run_carries_the_worker_error(world, plan, monkeypatch):
+    """A failed run must explain itself: the workspace has no other signal, so without
+    this the button just silently re-enables and the admin retries blind."""
+    def boom(run, job=None):
+        raise RuntimeError('recipe weights do not sum to 1')
+
+    monkeypatch.setattr(PlanService, '_run_spatial', staticmethod(boom))
+    run = PlanService.start_run(plan, PlanRun.SPATIAL)
+    run.refresh_from_db()
+    assert run.status == PlanRun.FAILED
+    assert PlanRunSerializer(run).data['error'] == 'recipe weights do not sum to 1'
+
+
+def test_healthy_run_reports_no_error(world, plan):
+    assert PlanRunSerializer(run_spatial(plan)).data['error'] == ''
 
 
 # ── product: the rest of the pipeline ──────────────────────────────────────────

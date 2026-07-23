@@ -39,9 +39,15 @@ export function Modal({
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Focus handling MUST only run on open/close — never on re-render. onClose is
-  // often an inline arrow (new identity each render), so keying this on it would
-  // steal focus from the active field on every keystroke of a controlled input.
+  // onClose is usually an inline arrow, so it has a fresh identity every render. Held in a
+  // ref so no effect below needs it as a dependency — an effect that re-ran on each render
+  // would steal focus from the active field on every keystroke of a controlled input.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Focus handling runs on open/close only.
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -55,7 +61,7 @@ export function Modal({
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !dialogRef.current) return;
@@ -74,7 +80,7 @@ export function Modal({
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -490,7 +490,7 @@ class PlanRunViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         if not is_planning_admin(self.request.user, self.required_permission):
             return PlanRun.objects.none()  # run internals (config, staging) are plan-admin data
-        qs = PlanRun.objects.filter(is_active=True).select_related('plan', 'scope_node')
+        qs = PlanRun.objects.filter(is_active=True).select_related('plan', 'scope_node', 'job')
         params = self.request.query_params
         for field in ('plan', 'kind', 'status'):
             if value := params.get(field):

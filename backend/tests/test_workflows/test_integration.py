@@ -72,3 +72,23 @@ def test_workflow_approved_exception_changes_payout(org, period, seeded):
     run2 = PayoutService.start_run(scheme.pk, period.pk)
     PayoutService.compute_run(run2.pk)
     assert run2.payouts.get(entity=org['ase1']).total_payout == Decimal('0.00')
+
+
+def test_workflow_rejected_exception_records_the_decider(org, period, seeded):
+    """The workflow path settles the exception through the adapter, and a rejection is a
+    decision — the detail screens name who took it, so it has to be written down."""
+    exc = ExceptionService.create({
+        'entity': org['ase1'], 'target_period': period, 'scheme': None,
+        'category': 'technical', 'sales_kpi_action': PayoutException.ZERO,
+        'execution_kpi_action': PayoutException.ACTUAL,
+        'gatekeeper_action': PayoutException.NO_EXEMPTION, 'reason': 'bad data',
+    }, actor=org['asm_user'])
+    inst = WorkflowService.for_subject('incentives.PayoutException', exc.pk)
+    assert inst is not None
+
+    WorkflowService.reject(inst, org['nsm_user'], 'numbers look right')
+    exc.refresh_from_db()
+    assert exc.status == PayoutException.REJECTED
+    assert exc.rejection_reason == 'numbers look right'
+    assert exc.approved_by == org['nsm_user']
+    assert exc.approved_at is not None

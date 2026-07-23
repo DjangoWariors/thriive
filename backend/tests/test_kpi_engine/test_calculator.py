@@ -23,6 +23,7 @@ from apps.assignments.services import AssignmentService
 from apps.hierarchy.models import Channel, Node, NodeType, GeographyNode, GeographyType
 from apps.kpi_engine.calculator import KPICalculator
 from apps.kpi_engine.models import KPIDefinition, Transaction
+from apps.kpi_engine.services import KPIService
 
 PERIOD_START = date(2026, 6, 1)
 PERIOD_END = date(2026, 6, 30)
@@ -136,6 +137,21 @@ def test_count_distinct_outlets(ase1):
         'measure_field': 'outlet_code', 'aggregation': 'count_distinct', 'net_logic': 'gross_only',
     })
     assert compute(kpi, ase1.id) == Decimal('2')
+
+
+def test_count_distinct_over_amount_field_is_rejected_not_crashed(ase1):
+    # The builder used to carry measure_field across an aggregation switch, so a distinct count
+    # could arrive naming a decimal column. Excluding '' on it raised decimal.InvalidOperation
+    # (a 500 from preview). Now it fails validation, and the calculator degrades to a number.
+    cfg = {'measure_field': 'net_amount', 'aggregation': 'count_distinct', 'net_logic': 'gross_only',
+           'having': {'field': 'net_amount', 'operator': 'gt', 'value': 0}}
+    errors = KPIService.validate_kpi_config(
+        {'kpi_type': KPIDefinition.COUNT_DISTINCT, 'measure_config': cfg})
+    assert any('count_distinct' in e for e in errors)
+
+    mk_txn(ase1.id, outlet_code='OUT1', net_amount=Decimal('100'))
+    kpi = mk_kpi(kpi_type=KPIDefinition.COUNT_DISTINCT, decimal_places=0, measure_config=cfg)
+    assert compute(kpi, ase1.id) == Decimal('1')
 
 
 def test_count_rows(ase1):

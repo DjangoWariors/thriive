@@ -3,7 +3,7 @@ import { Inbox, UserCheck } from 'lucide-react';
 import { useRBAC } from '../../hooks/useRBAC';
 import {
   useApproveStep, useBulkApprove, useBulkReject, useDelegations, usePendingApprovals,
-  useRejectStep, useWorkflowInstance,
+  useRejectStep,
 } from '../../hooks/useWorkflows';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/ui/Button';
@@ -13,18 +13,15 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
 import { Select } from '../../components/ui/Select';
-import { Spinner } from '../../components/ui/Spinner';
-import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Textarea } from '../../components/ui/Textarea';
 import {PageHeader} from '../../components/ui/PageHeader';
 import {TableSkeleton} from '../../components/ui/Skeleton';
 import { StatCard } from '../../components/data/StatCard';
 import { ApprovalCard } from '../../components/workflow/ApprovalCard';
-import { ApprovalTimeline } from '../../components/workflow/ApprovalTimeline';
+import { ApprovalDetailDrawer } from '../../components/workflow/ApprovalDetailDrawer';
 import { DelegationsDialog, isActiveNow } from '../../components/workflow/DelegationsDialog';
 import { BulkActionBar } from '../../components/workflow/BulkActionBar';
-import { WorkflowStepper } from '../../components/workflow/WorkflowStepper';
-import { formatCurrency, formatDate } from '../../utils/format';
+import { formatDate } from '../../utils/format';
 import { notify } from '../../utils/notify';
 import { apiErrorMessage } from '../../utils/apiError';
 import type { PendingApproval } from '../../types/workflow';
@@ -59,6 +56,7 @@ export default function WorkflowsPendingPage() {
     return overdueOnly ? all.filter((r) => r.is_overdue) : all;
   }, [resp, overdueOnly]);
 
+  const detailItem = rows.find((r) => r.id === detailId) ?? null;
   const overdueCount = (resp?.results ?? []).filter((r) => r.is_overdue).length;
   const selectedIds = [...selected];
 
@@ -194,7 +192,13 @@ export default function WorkflowsPendingPage() {
         onClear={() => setSelected(new Set())}
       />
 
-      <DetailDrawer id={detailId} onClose={() => setDetailId(null)} />
+      {/* Deciding from the drawer runs through the same confirm/reason dialogs as the row. */}
+      <ApprovalDetailDrawer
+        id={detailId}
+        onClose={() => setDetailId(null)}
+        onApprove={canDecide && detailItem ? () => setApproving(detailItem) : undefined}
+        onReject={canDecide && detailItem ? () => { setReason(''); setRejecting(detailItem); } : undefined}
+      />
 
       <DelegationsDialog open={delegationsOpen} onClose={() => setDelegationsOpen(false)} />
 
@@ -230,51 +234,3 @@ export default function WorkflowsPendingPage() {
   );
 }
 
-function DetailDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
-  const { data: inst, isLoading } = useWorkflowInstance(id);
-  return (
-    <Modal open={id !== null} onClose={onClose} title="Approval detail" size="lg">
-      {isLoading || !inst ? (
-        <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-      ) : (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">
-                {(inst.context_data.title as string) || inst.subject_summary.entity_name || `Request #${inst.id}`}
-              </p>
-              <p className="text-xs text-gray-500">
-                {inst.definition_name} · raised by {inst.initiated_by_name ?? 'system'}
-              </p>
-            </div>
-            <StatusBadge status={inst.status} />
-          </div>
-
-          {inst.subject_summary.reason && (
-            <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-              {inst.subject_summary.reason}
-            </div>
-          )}
-
-          {inst.context_data.impact_amount != null && inst.context_data.impact_amount !== '' && (
-            <p className="text-sm text-gray-600">
-              Estimated impact:{' '}
-              <span className="font-semibold text-gray-900">
-                {formatCurrency(inst.context_data.impact_amount as string)}
-              </span>
-            </p>
-          )}
-
-          <div className="rounded-lg border border-gray-100 p-3">
-            <WorkflowStepper steps={inst.steps} />
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Activity</p>
-            <ApprovalTimeline actions={inst.actions} />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}

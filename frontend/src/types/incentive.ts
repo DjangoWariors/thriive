@@ -267,6 +267,7 @@ export interface PayoutException {
   requested_by: number | null;
   requested_by_name: string | null;
   approved_by: number | null;
+  approved_by_name: string | null;
   approved_at: string | null;
   rejection_reason: string;
   impact_amount: string | null;
