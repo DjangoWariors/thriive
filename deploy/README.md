@@ -89,8 +89,11 @@ static, and `supervisorctl restart thriive:`. The sudo grant this needs is
 installed by `setup.sh` (`/etc/sudoers.d/thriive`):
 
 ```
-thriive ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive*, /usr/bin/supervisorctl status thriive*
+thriive ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive\:, /usr/bin/supervisorctl status thriive\:
 ```
+
+(Exact commands, no wildcards — recent sudo rejects wildcards in command
+arguments; the `:` must be backslash-escaped in sudoers.)
 
 ## HTTP demo vs. HTTPS
 

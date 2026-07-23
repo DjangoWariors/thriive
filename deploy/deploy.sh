@@ -42,7 +42,7 @@ if [ "$SKIP_RESTART" -eq 0 ]; then
     elif ! sudo -n supervisorctl restart thriive:; then
         echo "!!! Restart failed: no passwordless sudo rule for supervisorctl." >&2
         echo "!!! Install it (once, as root) by re-running deploy/setup.sh, or:" >&2
-        echo "!!!   echo 'thriive ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive*, /usr/bin/supervisorctl status thriive*' | sudo tee /etc/sudoers.d/thriive" >&2
+        echo "!!!   echo 'thriive ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive\:, /usr/bin/supervisorctl status thriive\:' | sudo tee /etc/sudoers.d/thriive" >&2
         echo "!!!   sudo chmod 440 /etc/sudoers.d/thriive" >&2
         echo "!!! Then restart manually: sudo supervisorctl restart thriive:" >&2
         exit 1

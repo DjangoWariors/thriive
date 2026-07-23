@@ -132,12 +132,17 @@ chown -R "$APP_USER:www-data" "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$LOG_DIR"
 chmod 750 "$LOG_DIR"
 
-# --- 4b. Sudoers: deploy.sh (run as $APP_USER) restarts the Supervisor group ----
-cat > /etc/sudoers.d/thriive <<EOF
-$APP_USER ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive*, /usr/bin/supervisorctl status thriive*
+# --- 4b. Sudoers: deploy.sh (run as $APP_USER) restarts the Supervisor group.
+#         Exact commands only — modern sudo forbids wildcards in arguments, and
+#         ':' is a sudoers metacharacter so it's escaped. Validate in a temp
+#         file first: a bad file in /etc/sudoers.d breaks sudo for the box. ----
+SUDOERS_TMP="$(mktemp)"
+cat > "$SUDOERS_TMP" <<EOF
+$APP_USER ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive\:, /usr/bin/supervisorctl status thriive\:
 EOF
-chmod 440 /etc/sudoers.d/thriive
-visudo -cf /etc/sudoers.d/thriive
+visudo -cf "$SUDOERS_TMP"
+install -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/thriive
+rm -f "$SUDOERS_TMP"
 
 # --- 5. PostgreSQL role + database ----------------------------------------------
 # The password goes in as a psql variable and is quoted with format(%L), so any
