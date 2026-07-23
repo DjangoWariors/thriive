@@ -6,7 +6,6 @@ import {Button} from '../../components/ui/Button';
 import {Input} from '../../components/ui/Input';
 import {Select} from '../../components/ui/Select';
 import {Card} from '../../components/ui/Card';
-import {PageHeader} from '../../components/ui/PageHeader';
 import {Modal} from '../../components/ui/Modal';
 import {Badge} from '../../components/ui/Badge';
 import {EmptyState} from '../../components/ui/EmptyState';
@@ -18,7 +17,7 @@ import {notify} from '../../utils/notify';
 import {formatRelative} from '../../utils/format';
 import {apiErrorMessage} from '../../utils/apiError';
 
-export default function ApiKeysPage() {
+export function ApiKeysTab() {
     const [formOpen, setFormOpen] = useState(false);
     const [revoking, setRevoking] = useState<ApiKey | null>(null);
 
@@ -41,10 +40,15 @@ export default function ApiKeysPage() {
     };
 
     return (
-        <div className="p-6">
-            <PageHeader title="API Keys" description="Machine credentials for external systems (DMS, SFA, agency trackers) that push data into Thriive." actions={<><Button icon={<Plus className="h-4 w-4"/>} onClick={() => setFormOpen(true)}>
+        <>
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-gray-500">
+                    Machine credentials for external systems (DMS, SFA, agency trackers) that push data into Thriive.
+                </p>
+                <Button icon={<Plus className="h-4 w-4"/>} onClick={() => setFormOpen(true)}>
                     Issue Key
-                </Button></>}/>
+                </Button>
+            </div>
 
             <HowThisWorks storageKey="api-keys-help" className="mb-6">
                 Each integration gets its own key, tied to a service-account user whose role decides what it may
@@ -109,7 +113,7 @@ export default function ApiKeysPage() {
                 confirmLabel="Revoke"
                 variant="danger"
             />
-        </div>
+        </>
     );
 }
 

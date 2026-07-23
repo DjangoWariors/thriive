@@ -7,7 +7,6 @@ import {Button} from '../../components/ui/Button';
 import {Input} from '../../components/ui/Input';
 import {Select} from '../../components/ui/Select';
 import {Card} from '../../components/ui/Card';
-import {PageHeader} from '../../components/ui/PageHeader';
 import {Modal} from '../../components/ui/Modal';
 import {Badge} from '../../components/ui/Badge';
 import {EmptyState} from '../../components/ui/EmptyState';
@@ -20,7 +19,7 @@ import {apiErrorMessage} from '../../utils/apiError';
 
 const KEY = ['reports', 'delivery-targets'] as const;
 
-export default function DeliveryTargetsPage() {
+export function DeliveryTargetsTab() {
     const qc = useQueryClient();
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<DeliveryTarget | null>(null);
@@ -48,13 +47,18 @@ export default function DeliveryTargetsPage() {
     }
 
     return (
-        <div className="p-6">
-            <PageHeader title="Delivery Targets" description="Where scheduled extracts are pushed — the client's data lake (S3) or an SFTP drop." actions={<><Button icon={<Plus className="h-4 w-4"/>} onClick={() => {
+        <>
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm text-gray-500">
+                    Where scheduled extracts are pushed — the client's data lake (S3) or an SFTP drop.
+                </p>
+                <Button icon={<Plus className="h-4 w-4"/>} onClick={() => {
                     setEditing(null);
                     setFormOpen(true);
                 }}>
                     Add Target
-                </Button></>}/>
+                </Button>
+            </div>
 
             <HowThisWorks storageKey="delivery-targets-help" className="mb-6">
                 A report schedule with delivery = “Delivery target” generates one extract per run and pushes
@@ -146,7 +150,7 @@ export default function DeliveryTargetsPage() {
                 confirmLabel="Deactivate"
                 variant="danger"
             />
-        </div>
+        </>
     );
 }
 

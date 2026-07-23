@@ -9,13 +9,12 @@ import {Card} from '../../components/ui/Card';
 import {StatusBadge} from '../../components/ui/StatusBadge';
 import {EmptyState} from '../../components/ui/EmptyState';
 import {HowThisWorks} from '../../components/ui/HowThisWorks';
-import {PageHeader} from '../../components/ui/PageHeader';
 import {TableSkeleton} from '../../components/ui/Skeleton';
 import {SimpleTable} from '../../components/ui/SimpleTable';
 import {notify} from '../../utils/notify';
 import {formatRelative} from '../../utils/format';
 
-export default function IntegrationMonitorPage() {
+export function IntegrationMonitorTab() {
     const [filters, setFilters] = useState<IntegrationBatchListParams>({});
     const [page, setPage] = useState(1);
     const [openId, setOpenId] = useState<number | null>(null);
@@ -29,11 +28,11 @@ export default function IntegrationMonitorPage() {
     };
 
     return (
-        <div className="p-6">
-            <PageHeader
-                title="Integration Monitor"
-                description="Every inbound push from DMS / SFA / agency systems — received, accepted and rejected row counts, with the failed payloads kept for reconciliation."
-            />
+        <>
+            <p className="mb-3 text-sm text-gray-500">
+                Every inbound push from DMS / SFA / agency systems — received, accepted and rejected row
+                counts, with the failed payloads kept for reconciliation.
+            </p>
 
             <HowThisWorks storageKey="integration-monitor-help" className="mb-6">
                 External systems push transactions and metric values in batches. Valid rows land immediately;
@@ -107,7 +106,7 @@ export default function IntegrationMonitorPage() {
             )}
 
             <Pagination count={data?.count ?? 0} page={page} onPageChange={setPage} className="mt-2"/>
-        </div>
+        </>
     );
 }
 

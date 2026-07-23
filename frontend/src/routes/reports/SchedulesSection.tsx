@@ -353,7 +353,7 @@ function ScheduleForm({existing, definitions, onDone}: {
                             options={targets.map((t) => ({value: String(t.id), label: `${t.name} (${t.code})`}))}/>
                     <p className="mt-1 text-xs text-gray-400">
                         {targets.length === 0
-                            ? 'No delivery targets available — configure them under Admin › Delivery Targets.'
+                            ? 'No delivery targets available — configure them under Settings › Delivery Targets.'
                             : 'One extract per run is generated in your scope and pushed here.'}
                     </p>
                 </div>

@@ -30,9 +30,6 @@ const KpiDefinitionsPage = lazy(() => import('./routes/kpi/definitions'));
 const KpiBuilderPage = lazy(() => import('./routes/kpi/kpi-builder'));
 const TransactionsPage = lazy(() => import('./routes/kpi/transactions'));
 const ExternalMetricsPage = lazy(() => import('./routes/admin/external-metrics'));
-const IntegrationMonitorPage = lazy(() => import('./routes/admin/integration-monitor'));
-const ApiKeysPage = lazy(() => import('./routes/admin/api-keys'));
-const DeliveryTargetsPage = lazy(() => import('./routes/admin/delivery-targets'));
 const TargetSettingPage = lazy(() => import('./routes/targets/index'));
 const PlanNewPage = lazy(() => import('./routes/targets/plan-new'));
 const PlanWorkspacePage = lazy(() => import('./routes/targets/plan-detail'));
@@ -126,6 +123,11 @@ function App() {
 
 
                             <Route path="/settings" element={<SettingsPage/>}/>
+                            {/* The integration screens now live as Settings tabs, which gate
+                                themselves on system_admin / integration_monitor. */}
+                            <Route path="/admin/api-keys" element={<Navigate to="/settings?tab=api-keys" replace/>}/>
+                            <Route path="/admin/delivery-targets" element={<Navigate to="/settings?tab=delivery-targets" replace/>}/>
+                            <Route path="/admin/integration-monitor" element={<Navigate to="/settings?tab=integration-monitor" replace/>}/>
 
                             <Route element={<RequirePermission permission="hierarchy_management"/>}>
                                 <Route path="/network" element={<NetworkWorkspaceLayout/>}>
@@ -179,15 +181,6 @@ function App() {
                                 {EXTERNAL_METRICS_ENABLED && (
                                     <Route path="/admin/external-metrics" element={<ExternalMetricsPage/>}/>
                                 )}
-                            </Route>
-
-                            <Route element={<RequirePermission permission="integration_monitor"/>}>
-                                <Route path="/admin/integration-monitor" element={<IntegrationMonitorPage/>}/>
-                            </Route>
-
-                            <Route element={<RequirePermission permission="system_admin"/>}>
-                                <Route path="/admin/api-keys" element={<ApiKeysPage/>}/>
-                                <Route path="/admin/delivery-targets" element={<DeliveryTargetsPage/>}/>
                             </Route>
 
                             <Route element={<RequirePermission permission="target_management"/>}>

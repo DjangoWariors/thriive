@@ -24,9 +24,6 @@ import {
     Wallet,
     Inbox,
     Radio,
-    PlugZap,
-    KeyRound,
-    CloudUpload,
 } from 'lucide-react';
 import {cn} from '../../utils/cn';
 import {EXTERNAL_METRICS_ENABLED} from '../../config/features';
@@ -133,9 +130,6 @@ const NAV_ITEMS: NavEntry[] = [
         items: [
             {label: 'Users', icon: Users, href: '/admin/users', permission: 'user_management'},
             {label: 'Roles', icon: Shield, href: '/admin/roles', permission: 'role_management'},
-            {label: 'Integration Monitor', icon: PlugZap, href: '/admin/integration-monitor', permission: 'integration_monitor'},
-            {label: 'API Keys', icon: KeyRound, href: '/admin/api-keys', permission: 'system_admin'},
-            {label: 'Delivery Targets', icon: CloudUpload, href: '/admin/delivery-targets', permission: 'system_admin'},
         ],
     },
     {label: 'Settings', icon: Settings, href: '/settings'},
