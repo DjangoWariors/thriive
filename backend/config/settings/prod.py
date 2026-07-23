@@ -6,6 +6,11 @@ DEBUG = False
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=lambda v: [s.strip() for s in v.split(',')])
 
+# Persistent DB connections — avoids the per-request connect/teardown tax.
+# Health checks stop a thread from reusing a connection Postgres already closed.
+DATABASES['default']['CONN_MAX_AGE'] = config('DB_CONN_MAX_AGE', default=60, cast=int)
+DATABASES['default']['CONN_HEALTH_CHECKS'] = True
+
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'

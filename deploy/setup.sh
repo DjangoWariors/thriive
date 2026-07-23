@@ -31,7 +31,16 @@ BACKEND="$APP_DIR/backend"
 FRONTEND="$APP_DIR/frontend"
 LOG_DIR="/var/log/thriive"
 
+# Gunicorn worker processes; default scales to the instance CPU count (gthread
+# workers, 4 threads each). Capped so DB connections stay well under Postgres's
+# max_connections=200 set below.
+GUNICORN_WORKERS="${GUNICORN_WORKERS:-$((2 * $(nproc) + 1))}"
+[ "$GUNICORN_WORKERS" -gt 24 ] && GUNICORN_WORKERS=24
+
 # --- Resolve host + HTTPS mode --------------------------------------------------
+# Remember whether the caller passed a host explicitly — an existing .env is only
+# rewritten in that case (an auto-detected IP must never clobber a real domain).
+if [ -n "$HOST" ]; then HOST_GIVEN=1; else HOST_GIVEN=0; fi
 if [ -z "$HOST" ]; then
     # No host given — auto-detect: EC2 IMDSv2, then a public echo, then local IP.
     TOKEN="$(curl -s -X PUT 'http://169.254.169.254/latest/api/token' \
@@ -80,6 +89,30 @@ https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
 fi
 systemctl enable --now postgresql
 
+# --- 2b. PostgreSQL tuning scaled to instance RAM. Stock config assumes a tiny
+#         box (shared_buffers=128MB, max_connections=100) — far too small for the
+#         transaction volumes this app aggregates. Ubuntu's postgresql.conf
+#         includes conf.d/ by default; restart applies shared_buffers. ----------
+PG_VER="$(ls /etc/postgresql 2>/dev/null | sort -V | tail -1 || true)"
+if [ -n "$PG_VER" ]; then
+    RAM_MB="$(free -m | awk '/^Mem:/{print $2}')"
+    MAINT_MB=$(( RAM_MB / 16 )); [ "$MAINT_MB" -gt 512 ] && MAINT_MB=512
+    mkdir -p "/etc/postgresql/$PG_VER/main/conf.d"
+    cat > "/etc/postgresql/$PG_VER/main/conf.d/thriive.conf" <<PGCONF
+# Thriive tuning — written by deploy/setup.sh for a ${RAM_MB}MB-RAM instance.
+# Re-running setup.sh regenerates this file; hand-edits go in a separate file.
+max_connections = 200
+shared_buffers = $(( RAM_MB / 4 ))MB
+effective_cache_size = $(( RAM_MB * 3 / 4 ))MB
+work_mem = 16MB
+maintenance_work_mem = ${MAINT_MB}MB
+wal_buffers = 16MB
+random_page_cost = 1.1
+effective_io_concurrency = 200
+PGCONF
+    systemctl restart postgresql
+fi
+
 # --- 3. Node.js + npm (Vite 6 / React 19 need Node >= NODE_MAJOR) ----------------
 # Prefer the distro packages (recent Ubuntu ships Node 20+); only fall back to
 # NodeSource if that's missing or too old (and NodeSource may lag new codenames).
@@ -98,6 +131,13 @@ mkdir -p "$APP_DIR" "$LOG_DIR"
 chown -R "$APP_USER:www-data" "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$LOG_DIR"
 chmod 750 "$LOG_DIR"
+
+# --- 4b. Sudoers: deploy.sh (run as $APP_USER) restarts the Supervisor group ----
+cat > /etc/sudoers.d/thriive <<EOF
+$APP_USER ALL=(root) NOPASSWD: /usr/bin/supervisorctl restart thriive*, /usr/bin/supervisorctl status thriive*
+EOF
+chmod 440 /etc/sudoers.d/thriive
+visudo -cf /etc/sudoers.d/thriive
 
 # --- 5. PostgreSQL role + database ----------------------------------------------
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
@@ -128,6 +168,20 @@ if [ ! -f "$BACKEND/.env" ]; then
     sed -i "s|__SECRET_KEY__|$SECRET|" "$BACKEND/.env"
     chown "$APP_USER:$APP_USER" "$BACKEND/.env"
     chmod 600 "$BACKEND/.env"
+elif [ "$HOST_GIVEN" = "1" ]; then
+    # Re-run with an explicit host (the documented demo→HTTPS upgrade path):
+    # refresh the host + TLS keys in place. Everything else in .env is preserved.
+    echo ">>> Updating host/HTTPS keys in existing $BACKEND/.env for $DOMAIN."
+    sed -i \
+        -e "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=$DOMAIN,localhost,127.0.0.1|" \
+        -e "s|^SECURE_SSL_REDIRECT=.*|SECURE_SSL_REDIRECT=$SSL_FLAG|" \
+        -e "s|^SESSION_COOKIE_SECURE=.*|SESSION_COOKIE_SECURE=$SSL_FLAG|" \
+        -e "s|^CSRF_COOKIE_SECURE=.*|CSRF_COOKIE_SECURE=$SSL_FLAG|" \
+        -e "s|^CSRF_TRUSTED_ORIGINS=.*|CSRF_TRUSTED_ORIGINS=$SCHEME://$DOMAIN|" \
+        -e "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=$SCHEME://$DOMAIN|" \
+        "$BACKEND/.env"
+else
+    echo ">>> Existing $BACKEND/.env left untouched (no HOST/DOMAIN passed)."
 fi
 
 systemctl enable --now redis-server
@@ -147,11 +201,21 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
 # --- 9. Supervisor (gunicorn + celery worker + beat) ----------------------------
-sed "s|__APP_DIR__|$APP_DIR|; s|__APP_USER__|$APP_USER|" \
+sed "s|__APP_DIR__|$APP_DIR|; s|__APP_USER__|$APP_USER|; s|__GUNICORN_WORKERS__|$GUNICORN_WORKERS|" \
     "$APP_DIR/deploy/supervisor/thriive.conf" > /etc/supervisor/conf.d/thriive.conf
 supervisorctl reread
 supervisorctl update
 supervisorctl restart thriive:
+
+# --- 10. Nightly logical DB backup, 14-day retention. For real DR, also ship
+#          these off-box (e.g. aws s3 sync /var/backups/thriive s3://...). ------
+mkdir -p /var/backups/thriive
+chown postgres:postgres /var/backups/thriive
+chmod 700 /var/backups/thriive
+cat > /etc/cron.d/thriive-backup <<EOF
+30 1 * * * postgres pg_dump -Fc $DB_NAME -f /var/backups/thriive/$DB_NAME-\$(date +\%F).dump && find /var/backups/thriive -name '*.dump' -mtime +14 -delete
+EOF
+chmod 644 /etc/cron.d/thriive-backup
 
 cat <<DONE
 
