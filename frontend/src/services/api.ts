@@ -29,10 +29,19 @@ const api = axios.create({
     timeout: 30_000,
 });
 
+// CSV/PDF downloads stream row-by-row and scale with the dataset — a 200k-entity
+// export takes ~40s, well past the 30s that suits a JSON call. Match Nginx's
+// `proxy_read_timeout 300s` so the client gives up exactly when the server does,
+// instead of aborting a download that was still arriving.
+const DOWNLOAD_TIMEOUT_MS = 300_000;
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token');
     if (token !== null) {
         config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (config.responseType === 'blob') {
+        config.timeout = DOWNLOAD_TIMEOUT_MS;
     }
     return config;
 });

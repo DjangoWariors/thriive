@@ -69,16 +69,28 @@ class KPICalculator:
         node_qs = AssignmentService.scope_node_qs_for_entity(entity_id, on=self.period_end)
         return self.round_value(self._compute_raw([] if node_qs is None else node_qs, entity_id))
 
+    def _folds_by_sum(self) -> bool:
+        """True when a subtree's value is the sum of its member nodes' values, so a batch
+        can aggregate per node and fold by addition.
+
+        Only *additive* aggregations qualify: SUM(field) and COUNT(rows) over disjoint node
+        sets. A DISTINCT count is **not** additive — the same SKU/outlet under two child
+        nodes would be counted once per node and double-counted in the sum
+        (``distinct(A∪B) ≠ distinct(A)+distinct(B)``) — so it must aggregate over the whole
+        owned node set at once. A per-group ``having`` (EC) and weighted distribution are
+        likewise non-foldable. Ratio/growth/boolean/external/composite never fold."""
+        mc = self.kpi.measure_config or {}
+        if self.kpi.kpi_type not in (KPIDefinition.VALUE, KPIDefinition.COUNT, KPIDefinition.COUNT_DISTINCT):
+            return False
+        if mc.get('having') or mc.get('aggregation') == 'weighted_distinct':
+            return False
+        return (mc.get('aggregation') or 'sum') in ('sum', 'count')
+
     def compute_bulk(self, entity_ids: list[int]) -> dict[int, Decimal]:
         """Compute for many entities. For the common same-level case (siblings with
-        disjoint subtrees, e.g. all ASEs in a daily achievement run) the simple
+        disjoint subtrees, e.g. all ASEs in a daily achievement run) additive
         aggregations run as a single grouped query and fold by subtree."""
-        mc = self.kpi.measure_config or {}
-        simple = self.kpi.kpi_type in (KPIDefinition.VALUE, KPIDefinition.COUNT, KPIDefinition.COUNT_DISTINCT)
-        # A per-group "having" filter (e.g. EC = outlets with net > 0) and weighted
-        # distribution can't be folded from per-leaf counts, so fall back to the
-        # per-entity path for those.
-        if simple and not mc.get('having') and mc.get('aggregation') != 'weighted_distinct':
+        if self._folds_by_sum():
             return self._bulk_simple(entity_ids)
         # Non-foldable KPIs still aggregate per entity, but ownership resolves once
         # for the whole set — the per-entity fan-out was the 150k bottleneck, not the math.
@@ -101,12 +113,10 @@ class KPICalculator:
             return {}
         subtree_map = {nid: self._subtree_node_ids(nid) for nid in node_ids}
 
-        mc = self.kpi.measure_config or {}
-        simple = self.kpi.kpi_type in (KPIDefinition.VALUE, KPIDefinition.COUNT, KPIDefinition.COUNT_DISTINCT)
-        if not (simple and not mc.get('having') and mc.get('aggregation') != 'weighted_distinct'):
-            # having / weighted / non-simple KPIs can't fold from per-leaf counts.
-            # entity_id=None: on the geography axis there is no org entity (matters for
-            # person-grain external metrics, which must not misread a node id).
+        if not self._folds_by_sum():
+            # distinct-count / having / weighted / non-simple KPIs can't fold from per-leaf
+            # counts. entity_id=None: on the geography axis there is no org entity (matters
+            # for person-grain external metrics, which must not misread a node id).
             return {nid: self.round_value(self._compute_raw(subtree_map[nid], None)) for nid in node_ids}
 
         node_to_target: dict[int, int] = {}
@@ -128,14 +138,12 @@ class KPICalculator:
     def values_by_node(self) -> dict[int, Decimal] | None:
         """Raw per-attributed-node values over the whole window, for KPIs whose subtree
         value is the sum of its member nodes' values (the same fold condition as
-        ``compute_bulk``). Returns None when folding is invalid — ratio/growth/boolean/
-        composite/external, per-group having, weighted distribution — and the caller must
-        aggregate per subtree instead (``compute_for_subtrees``)."""
-        mc = self.kpi.measure_config or {}
-        simple = self.kpi.kpi_type in (KPIDefinition.VALUE, KPIDefinition.COUNT, KPIDefinition.COUNT_DISTINCT)
-        if not (simple and not mc.get('having') and mc.get('aggregation') != 'weighted_distinct'):
+        ``compute_bulk``). Returns None when folding is invalid — distinct counts,
+        ratio/growth/boolean/composite/external, per-group having, weighted distribution —
+        and the caller must aggregate per subtree instead (``compute_for_subtrees``)."""
+        if not self._folds_by_sum():
             return None
-        return self._grouped_aggregate(mc, None, (self.period_start, self.period_end))
+        return self._grouped_aggregate(self.kpi.measure_config or {}, None, (self.period_start, self.period_end))
 
     def compute_for_subtrees(self, subtree_map: dict[int, list[int]]) -> dict[int, Decimal]:
         """This KPI per key, aggregated over precomputed member-node sets. Keys may overlap

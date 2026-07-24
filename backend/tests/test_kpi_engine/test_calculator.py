@@ -302,6 +302,23 @@ def test_effective_coverage_rolls_up_subtree(manager, ase1, ase2):
     assert compute(ec, manager.id) == Decimal('1')
 
 
+def test_distinct_count_does_not_double_count_across_a_managers_subtree(manager, ase1, ase2):
+    """A DISTINCT count is not additive: the same SKU under two child nodes is ONE distinct
+    value for the manager, not two. Both children sell only S1, so the manager's distinct
+    SKU count is 1 — regressions here inflate it to 2 by summing per-node distinct counts."""
+    mk_txn(ase1.id, sku_code='S1', net_amount=Decimal('100'))
+    mk_txn(ase2.id, sku_code='S1', net_amount=Decimal('200'))
+    kpi = mk_kpi(kpi_type=KPIDefinition.COUNT_DISTINCT, decimal_places=0, measure_config={
+        'measure_field': 'sku_code', 'aggregation': 'count_distinct', 'net_logic': 'gross_only',
+    })
+    assert compute(kpi, ase1.id) == Decimal('1')
+    assert compute(kpi, ase2.id) == Decimal('1')
+    # The single-entity and batch paths must agree — the batch fold was the bug.
+    calc = KPICalculator(kpi, PERIOD_START, PERIOD_END)
+    assert calc.compute_for_entity(manager.id) == Decimal('1')
+    assert calc.compute_bulk([manager.id])[manager.id] == Decimal('1')
+
+
 def test_sku_group_attribute_filter(db, ase1):
     from apps.master_data.models import SKU, SKUGroup
     SKU.objects.create(code='F1', name='Large pack', attributes={'pack_size': 'large'})

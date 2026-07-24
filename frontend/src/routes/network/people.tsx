@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import axios from 'axios';
 import {Search, Upload, Download, GitBranch, X} from 'lucide-react';
 import {notify} from '../../utils/notify';
 import {Button} from '../../components/ui/Button';
@@ -55,8 +56,14 @@ export default function HierarchyPage() {
         try {
             const blob = await entityService.export(colFilters);
             downloadBlob(blob, 'entities.csv');
-        } catch {
-            notify.error('Could not export entities.');
+        } catch (err) {
+            // A timed-out export is a size problem, not a failure — say so, because
+            // the generic message sent people looking for a broken endpoint.
+            notify.error(
+                axios.isAxiosError(err) && err.code === 'ECONNABORTED'
+                    ? 'Export timed out. Narrow the list with the type or channel filter and try again.'
+                    : 'Could not export entities.',
+            );
         } finally {
             setExporting(false);
         }
