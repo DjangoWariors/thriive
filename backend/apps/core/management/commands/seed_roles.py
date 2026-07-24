@@ -32,6 +32,11 @@ ROLES_SEED = [
             achievement_compute='full',
             final_payout='view_all',
             payout_approve='full',
+            # An approver has to be able to open the exception first: the resource grants
+            # the read, the *_approve gate grants the action — the same pairing as
+            # final_payout + payout_approve above. Without the read they were stopped at
+            # the viewset before the approve check ever ran.
+            exception_management='view_all',
             exception_approve='full',
             workflow_management='full',
             report_generation='full',
@@ -59,7 +64,11 @@ ROLES_SEED = [
             # low-sensitivity reference data).
             kpi_definitions='view_readonly',
             hierarchy_management='view_readonly',
-            exception_approve='team',
+            # Read their subtree's exceptions, and approve them. 'exception_approve' is a
+            # gate resource (full|none) — the *scope* comes from exception_management, so
+            # a regional manager only ever sees and approves their own subtree.
+            exception_management='team',
+            exception_approve='full',
             workflow_management='team',
             report_generation='team',
             report_sales='team',
@@ -82,6 +91,11 @@ ROLES_SEED = [
             kpi_definitions='view_readonly',
             hierarchy_management='view_readonly',
             exception_management='team',
+            # The exception workflow's first step is "Manager Review", assigned to the
+            # subject's immediate manager — for field staff that is this role. Without
+            # the gate the assignee was handed an item they were refused permission to
+            # action, and it sat until the 48h SLA escalated it.
+            exception_approve='full',
             workflow_management='team',
             report_sales='team',
             report_coverage='team',

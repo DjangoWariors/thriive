@@ -33,6 +33,25 @@ def _user_labels(user_ids) -> dict[int, str]:
     return labels
 
 
+def _node_labels(entity_ids) -> dict[int, str]:
+    """Batch-resolve organisation node id → name. Period-wide computations carry
+    entity_id 0 (the column is non-null), so drop the falsy ids rather than look them up."""
+    ids = {eid for eid in entity_ids if eid}
+    if not ids:
+        return {}
+    Node = django_apps.get_model('hierarchy', 'Node')
+    return {n.pk: n.name for n in Node.objects.filter(pk__in=ids).only('id', 'name')}
+
+
+def _period_labels(period_ids) -> dict[int, str]:
+    """Batch-resolve target-period id → name, avoiding N+1 in log lists."""
+    ids = {pid for pid in period_ids if pid}
+    if not ids:
+        return {}
+    TargetPeriod = django_apps.get_model('targets', 'TargetPeriod')
+    return {p.pk: p.name for p in TargetPeriod.objects.filter(pk__in=ids).only('id', 'name')}
+
+
 def _apply_date_range(qs, params, field='timestamp'):
     if date_from := params.get('date_from'):
         qs = qs.filter(**{f'{field}__date__gte': date_from})
@@ -138,6 +157,21 @@ class ComputationLogViewSet(ReadOnlyModelViewSet):
         if val := p.get('entity'):
             qs = qs.filter(entity_id=val)
         return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        rows = getattr(self, '_page_rows', None)
+        if rows is not None:
+            ctx['node_labels'] = _node_labels(r.entity_id for r in rows)
+            ctx['period_labels'] = _period_labels(r.period_id for r in rows)
+        return ctx
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        self._page_rows = page if page is not None else list(qs)
+        ser = self.get_serializer(self._page_rows, many=True)
+        return self.get_paginated_response(ser.data) if page is not None else Response(ser.data)
 
 
 _ACCESS_PARAMS = [

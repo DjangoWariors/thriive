@@ -237,13 +237,16 @@ class MarkPaidSerializer(serializers.Serializer):
 class PayoutLineItemSerializer(serializers.ModelSerializer):
     kpi_name = serializers.CharField(source='scheme_kpi.kpi.name', read_only=True)
     kpi_id = serializers.IntegerField(source='scheme_kpi.kpi_id', read_only=True)
+    # target/achieved on a line are in the KPI's own unit (outlets, calls…), not rupees —
+    # only line_payout is money. The breakdown needs the unit to format them apart.
+    kpi_unit = serializers.CharField(source='scheme_kpi.kpi.unit', read_only=True)
     incentive_category = serializers.CharField(
         source='scheme_kpi.incentive_category', read_only=True,
     )
 
     class Meta:
         model = PayoutLineItem
-        fields = ['id', 'kpi_code', 'kpi_name', 'kpi_id', 'incentive_category',
+        fields = ['id', 'kpi_code', 'kpi_name', 'kpi_id', 'kpi_unit', 'incentive_category',
                   'target_value', 'achieved_value', 'achievement_pct', 'tier_min',
                   'tier_max', 'base_multiplier', 'applied_multiplier', 'weightage',
                   'weighted_multiplier', 'line_payout', 'treatment']

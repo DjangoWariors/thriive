@@ -80,7 +80,9 @@ export default function Dashboard() {
       <PageHeader
         className="mb-0"
         title={`Welcome back, ${name} 👋`}
-        description={`${data.entity ? `${data.entity.name} · ` : ''}Performance for the selected period.`}
+        // An unscoped admin is shown the root node's numbers; naming that person here
+        // read as if the admin were looking at someone else's scorecard.
+        description={`${data.entity ? `${data.entity.is_own ? data.entity.name : 'Organisation-wide'} · ` : ''}Performance for the selected period.`}
         actions={canCompute && (
           <Button variant="outline" size="sm" icon={<Play size={14} />} loading={compute.isPending} onClick={runCompute}>
             Recompute
@@ -173,7 +175,12 @@ export default function Dashboard() {
           </div>
 
           {/* Row 5 — alerts */}
-          <AlertList alerts={alerts} onAcknowledge={(id) => ack.mutate(id)}
+          <AlertList alerts={alerts}
+                     totalOpen={summary.open_alerts}
+                     onOpen={(a) => navigate(
+                       `/achievements?period=${selectedPeriodId}&entity=${a.entity_id}`
+                       + (a.kpi_id ? `&kpi=${a.kpi_id}` : ''))}
+                     onAcknowledge={(id) => ack.mutate(id)}
                      onAcknowledgeAll={() => ackAll.mutate(selectedPeriodId, {
                        onSuccess: (r) => notify.success(
                          r.acknowledged > 0

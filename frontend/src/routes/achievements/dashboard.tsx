@@ -16,7 +16,7 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { DataTable } from '../../components/data/DataTable';
 import { TerritoryActualsGrid } from '../../components/data/TerritoryActualsGrid';
-import { formatCurrency, formatPct } from '../../utils/format';
+import { formatPct, formatUnitCompact } from '../../utils/format';
 import type { AchievementListItem } from '../../types/achievement';
 
 export default function AchievementsList() {
@@ -39,8 +39,10 @@ export default function AchievementsList() {
     ) },
     { accessorKey: 'kpi_name', header: 'KPI' },
     { accessorKey: 'channel_code', header: 'Channel', cell: (c) => c.getValue<string>() ?? '—' },
-    { accessorKey: 'target_value', header: 'Target', cell: (c) => formatCurrency(c.getValue<string>()) },
-    { accessorKey: 'achieved_value', header: 'Achieved', cell: (c) => formatCurrency(c.getValue<string>()) },
+    { accessorKey: 'target_value', header: 'Target',
+      cell: (c) => formatUnitCompact(c.getValue<string>(), c.row.original.kpi_unit) },
+    { accessorKey: 'achieved_value', header: 'Achieved',
+      cell: (c) => formatUnitCompact(c.getValue<string>(), c.row.original.kpi_unit) },
     {
       accessorKey: 'achievement_pct', header: 'Achievement',
       cell: (c) => (

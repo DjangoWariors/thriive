@@ -110,7 +110,10 @@ class AuthService:
 
         user.failed_login_count = 0
         user.locked_until = None
-        user.save(update_fields=['failed_login_count', 'locked_until'])
+        # Stamp last_login here: JWT issuance never goes through Django's login(), so
+        # without this the admin Users grid reads "Never" for everyone, forever.
+        user.last_login = timezone.now()
+        user.save(update_fields=['failed_login_count', 'locked_until', 'last_login'])
 
 
 
@@ -194,6 +197,9 @@ class AuthService:
         if user is None or not user.is_active:
             cls._log(None, identifier, 'otp', ip, user_agent, False, 'user_not_found')
             return {'status': 'failed', 'user': None, 'tokens': None}
+
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
 
         refresh = RefreshToken.for_user(user)
         tokens = {'access': str(refresh.access_token), 'refresh': str(refresh)}

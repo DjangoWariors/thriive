@@ -6,6 +6,9 @@ from .models import Achievement, AchievementSnapshot, Alert, AlertRule
 class AchievementListSerializer(serializers.ModelSerializer):
     kpi_code = serializers.CharField(source='kpi.code', read_only=True)
     kpi_name = serializers.CharField(source='kpi.name', read_only=True)
+    # The list renders target/achieved, so it needs the unit too — without it every
+    # count KPI (outlets, calls, SKUs) gets formatted as rupees.
+    kpi_unit = serializers.CharField(source='kpi.unit', read_only=True)
     entity_name = serializers.CharField(source='entity.name', read_only=True)
     entity_code = serializers.CharField(source='entity.code', read_only=True)
     channel_code = serializers.CharField(source='channel.code', read_only=True, default=None)
@@ -13,9 +16,9 @@ class AchievementListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Achievement
         fields = [
-            'id', 'target_period', 'kpi', 'kpi_code', 'kpi_name', 'entity', 'entity_name',
-            'entity_code', 'channel_code', 'target_value', 'achieved_value', 'achievement_pct',
-            'projected_pct', 'gap_to_target', 'growth_pct', 'is_provisional',
+            'id', 'target_period', 'kpi', 'kpi_code', 'kpi_name', 'kpi_unit', 'entity',
+            'entity_name', 'entity_code', 'channel_code', 'target_value', 'achieved_value',
+            'achievement_pct', 'projected_pct', 'gap_to_target', 'growth_pct', 'is_provisional',
         ]
 
 

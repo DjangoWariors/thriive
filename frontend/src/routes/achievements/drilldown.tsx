@@ -12,7 +12,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Pagination } from '../../components/ui/Pagination';
 import { DataTable } from '../../components/data/DataTable';
-import { formatCurrency, formatDate, formatPct } from '../../utils/format';
+import { formatCurrency, formatDate, formatPct, formatUnitCompact } from '../../utils/format';
 import type { KPITransaction } from '../../types/kpi';
 
 export default function AchievementDrilldown() {
@@ -90,11 +90,11 @@ export default function AchievementDrilldown() {
       {/* Summary */}
       <Card padding="md">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <Metric label="Target" value={formatCurrency(ach.target_value)} />
-          <Metric label="Achieved" value={formatCurrency(ach.achieved_value)} />
+          <Metric label="Target" value={formatUnitCompact(ach.target_value, ach.kpi_unit)} />
+          <Metric label="Achieved" value={formatUnitCompact(ach.achieved_value, ach.kpi_unit)} />
           <Metric label="Achievement" value={formatPct(ach.achievement_pct)} />
           <Metric label="Projected" value={formatPct(ach.projected_pct)} />
-          <Metric label="Req. run-rate" value={formatCurrency(ach.required_run_rate)} />
+          <Metric label="Req. run-rate" value={formatUnitCompact(ach.required_run_rate, ach.kpi_unit)} />
           <Metric
             label="Growth vs LY"
             value={ach.growth_pct !== null ? formatPct(ach.growth_pct) : '—'}

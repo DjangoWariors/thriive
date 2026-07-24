@@ -41,6 +41,8 @@ class _UserComputedFieldsMixin:
             'name': entity.name,
             'code': entity.code,
             'type': getattr(entity_type, 'code', None),
+            # The code ('ret') is for wiring; partner-facing screens show this instead.
+            'type_name': getattr(entity_type, 'name', None),
             'path': entity.path,
         }
 

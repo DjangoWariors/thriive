@@ -32,6 +32,9 @@ from .models import Achievement, AchievementSnapshot, Alert, TerritoryAchievemen
 
 _VIEW_PERM = 'achievement_view'
 _SEVERITY_ORDER = {'critical': 0, 'warning': 1, 'info': 2}
+# How many alerts the dashboard panel carries. The summary's open_alerts keeps the true
+# total, so the UI can say how many are not shown.
+_ALERT_LIMIT = 20
 _CHUNK = 1000
 
 # is_provisional is deliberately NOT here: a recompute must preserve the frozen flag a
@@ -481,7 +484,10 @@ class DashboardService:
 
         return {
             'entity': {'id': home.id, 'name': home.name, 'code': home.code,
-                       'type': home.entity_type.code if home.entity_type else None},
+                       'type': home.entity_type.code if home.entity_type else None,
+                       # False when an unscoped admin fell back to a root node: the numbers
+                       # are org-wide, so the UI must not label them with that person's name.
+                       'is_own': getattr(user, 'entity_id', None) == home.id},
             'summary': DashboardService._summary(
                 user, home, target_period, own,
                 estimated_payout=payout_info['estimated_payout'],
@@ -620,25 +626,33 @@ class DashboardService:
 
     @staticmethod
     def _channel_mix(period, home) -> list[dict]:
-        # A manager's achievement already rolls up its subtree, so counting every
-        # channel-bearing row would double-count each level. Leaf rows only.
-        parents = Node.objects.filter(
-            is_current=True, is_active=True,
-            path__startswith=home.path, parent__isnull=False,
-        ).values('parent_id')
+        """Net sales split by channel over the territories ``home`` is responsible for.
+
+        Read from transactions, never from Achievement rows: ``Achievement.channel`` tags the
+        *person* (every manager above the MT executives is tagged GT), and achieved_value is
+        per KPI, so summing it would add rupees to outlet counts to negative returns. Sales
+        carry their own channel and attach to geography, which is the only sound source.
+        """
+        node_ids = AssignmentService.scope_node_ids_for_entity(home.id, on=period.end_date)
+        if not node_ids:
+            return []
         rows = (
-            Achievement.objects.filter(
-                target_period=period, entity__path__startswith=home.path, channel__isnull=False,
+            Transaction.objects
+            .filter(
+                is_active=True, transaction_type=Transaction.SALE,
+                attributed_node_id__in=node_ids,
+                transaction_date__gte=period.start_date,
+                transaction_date__lte=period.end_date,
             )
-            .exclude(entity_id__in=parents)
-            .values('channel__code')
-            .annotate(a=Sum('achieved_value'))
+            .values('channel_code')
+            .annotate(a=Sum('net_amount'))
         )
         total = sum((r['a'] or Decimal('0') for r in rows), Decimal('0'))
         if not total:
             return []
         return [
-            {'channel': r['channel__code'], 'pct': str(_pct(r['a'] or Decimal('0'), total))}
+            {'channel': r['channel_code'] or '(unset)',
+             'pct': str(_pct(r['a'] or Decimal('0'), total))}
             for r in rows
         ]
 
@@ -651,13 +665,32 @@ class DashboardService:
             .select_related('rule', 'entity', 'kpi')
         )
         items = [{
-            'id': al.id, 'entity_name': al.entity.name, 'rule_code': al.rule.code,
+            'id': al.id, 'entity_id': al.entity_id, 'entity_name': al.entity.name,
+            'rule_code': al.rule.code,
             'severity': al.severity, 'metric': al.rule.metric,
             'metric_value': str(al.metric_value), 'message': al.message,
-            'kpi_code': al.kpi.code if al.kpi_id else None,
+            'kpi_id': al.kpi_id, 'kpi_code': al.kpi.code if al.kpi_id else None,
         } for al in alerts]
         items.sort(key=lambda i: _SEVERITY_ORDER.get(i['severity'], 9))
-        return items[:20]
+
+        # Slicing the sorted list would let one severity fill the whole page: a national
+        # view with 21 criticals hid every warning, so the panel silently disagreed with
+        # its own "open alerts" count. Give each severity present a guaranteed share
+        # first, then spend what's left in severity order.
+        buckets: dict[str, list[dict]] = {}
+        for item in items:
+            buckets.setdefault(item['severity'], []).append(item)
+        share = _ALERT_LIMIT // len(buckets) if buckets else 0
+        kept = [i for b in buckets.values() for i in b[:share]]
+        remaining = _ALERT_LIMIT - len(kept)
+        for bucket in buckets.values():
+            if remaining <= 0:
+                break
+            extra = bucket[share:share + remaining]
+            kept.extend(extra)
+            remaining -= len(extra)
+        kept.sort(key=lambda i: _SEVERITY_ORDER.get(i['severity'], 9))
+        return kept
 
     @staticmethod
     def _empty(period) -> dict:

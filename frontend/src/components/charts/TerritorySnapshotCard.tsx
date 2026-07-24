@@ -7,16 +7,22 @@ import { Button } from '../ui/Button';
 import { ProgressBar } from '../ui/ProgressBar';
 import { EmptyState } from '../ui/EmptyState';
 import { Skeleton } from '../ui/Skeleton';
-import { formatPct } from '../../utils/format';
+import { formatPct, isCurrencyUnit } from '../../utils/format';
 
 /** Top-level territory plan tracking for the primary KPI — links into the full grid. */
 export function TerritorySnapshotCard({ periodId }: { periodId: number }) {
   const navigate = useNavigate();
   const { data: kpisResp, isLoading: kpisLoading } = useKpiDefinitions();
-  const kpi = kpisResp?.results?.[0] ?? null;
+  // Headline the first *value* KPI rather than whatever sorts first — the alphabetical
+  // pick was a compliance feed nobody plans against, so the card always read empty.
+  const kpis = kpisResp?.results ?? [];
+  const kpi = kpis.find((k) => isCurrencyUnit(k.unit)) ?? kpis[0] ?? null;
   const { data, isLoading } = useTerritoryGrid(
     kpi ? { kpi: kpi.id, period: periodId, page_size: 5 } : null,
   );
+  // Rows with no committed target come back with a null percentage; a list of em-dashes
+  // and empty bars is worse than saying there is nothing to track.
+  const hasTracking = !!data && data.rows.some((r) => r.achievement_pct !== null);
 
   return (
     <Card padding="md">
@@ -40,7 +46,7 @@ export function TerritorySnapshotCard({ periodId }: { periodId: number }) {
             <Skeleton key={i} variant="rect" height={28} />
           ))}
         </div>
-      ) : !kpi || !data || data.rows.length === 0 ? (
+      ) : !kpi || !hasTracking ? (
         <EmptyState
           icon={Map}
           title="No territory targets"

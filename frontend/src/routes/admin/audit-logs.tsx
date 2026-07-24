@@ -313,8 +313,9 @@ function ComputationLogTab() {
                                 </span>
                             )},
                             {header: 'Type', render: (row) => <Badge variant="info">{row.computation_type}</Badge>},
-                            {header: 'Entity', render: (row) => <span className="text-gray-600">{row.entity_id ?? '—'}</span>},
-                            {header: 'Period', render: (row) => <span className="text-gray-600">{row.period_id ?? '—'}</span>},
+                            // entity_id is 0, not null, for a period-wide computation.
+                            {header: 'Entity', render: (row) => <span className="text-gray-600">{row.entity_label || (row.entity_id ? `#${row.entity_id}` : '—')}</span>},
+                            {header: 'Period', render: (row) => <span className="text-gray-600">{row.period_label || (row.period_id ? `#${row.period_id}` : '—')}</span>},
                         ]}
                     />
                     <Pagination count={data?.count ?? 0} page={page} onPageChange={setPage}/>

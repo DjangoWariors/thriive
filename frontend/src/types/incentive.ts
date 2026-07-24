@@ -204,6 +204,7 @@ export interface PayoutLineItem {
   kpi_code: string;
   kpi_name: string;
   kpi_id: number;
+  kpi_unit: string;
   incentive_category: IncentiveCategory;
   target_value: string;
   achieved_value: string;

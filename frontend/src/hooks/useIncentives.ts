@@ -202,9 +202,17 @@ export function useRejectException() {
 
 // ── payout cycles (month-close) ───────────────────────────────────────────────
 
+// Every cycle transition (and every hold/release inside one) can move the readiness
+// checklist, the review board, the register and an individual payout's hold badge —
+// they are separate queries, so listing all of them here is what keeps the workspace
+// from showing pre-mutation numbers until the user reloads.
 const CYCLE_INVALIDATES: string[][] = [
   ['incentives', 'cycles'],
+  ['incentives', 'cycle-readiness'],
+  ['incentives', 'cycle-review'],
+  ['incentives', 'cycle-register'],
   ['incentives', 'payouts'],
+  ['incentives', 'payout'],
   ['incentives', 'payout-summary'],
   ['achievements', 'dashboard'],
 ];
@@ -304,12 +312,19 @@ export function useCloseCycle() {
   });
 }
 
+/** Finalize and compute return a background job rather than the mutated cycle, so the
+ *  workspace has to refresh itself when that job reports done. */
+export function useInvalidateCycles() {
+  const invalidate = useInvalidate();
+  return () => invalidate(...CYCLE_INVALIDATES);
+}
+
 export function useHoldPayout() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       incentiveService.holdPayout(id, reason),
-    onSuccess: () => invalidate(...CYCLE_INVALIDATES, ['incentives', 'cycle-review']),
+    onSuccess: () => invalidate(...CYCLE_INVALIDATES),
   });
 }
 
@@ -317,7 +332,7 @@ export function useReleasePayout() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (id: number) => incentiveService.releasePayout(id),
-    onSuccess: () => invalidate(...CYCLE_INVALIDATES, ['incentives', 'cycle-review']),
+    onSuccess: () => invalidate(...CYCLE_INVALIDATES),
   });
 }
 

@@ -475,6 +475,7 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
     const [attrs, setAttrs] = useState<Record<string, unknown>>(entity?.attributes ?? {});
     const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
     const [basicErrors, setBasicErrors] = useState<{ name?: string; code?: string }>({});
+    const [loginError, setLoginError] = useState<string | undefined>(undefined);
     const [parent, setParent] = useState<EntityListItem | null>(null);
 
     const loginMethod = currentET?.display_config.login_method ?? 'otp_only';
@@ -497,6 +498,7 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
         if (!isEdit) {
             setAttrs({});
             setAttrErrors({});
+            setLoginError(undefined);
         }
     }, [selectedTypeId, isEdit]);
 
@@ -521,6 +523,12 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
         if (!name.trim()) nextBasic.name = 'Name is required';
         setBasicErrors(nextBasic);
 
+        // A loginable type always gets an account, and an account with neither an email nor a
+        // mobile can never be signed into — so demand one identifier rather than creating a
+        // login nobody can use.
+        const needsIdentifier = !isEdit && currentET.is_loginable
+            && !loginEmail.trim() && !loginMobile.trim();
+        setLoginError(needsIdentifier ? 'Add an email or a mobile — the login account is created from it.' : undefined);
 
         const schema = buildZodSchema(currentET.attribute_schema);
         const parsed = schema.safeParse(attrs);
@@ -535,7 +543,18 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
             setAttrErrors({});
         }
 
-        if (Object.keys(nextBasic).length > 0 || !parsed.success) return;
+        if (Object.keys(nextBasic).length > 0 || !parsed.success || needsIdentifier) {
+            // The invalid field is often scrolled out of the modal, which made pressing
+            // the submit button look like a no-op. Bring the first one into view.
+            const firstInvalid = nextBasic.name ? 'name'
+                : !parsed.success ? `attr:${parsed.error.issues[0]?.path[0]}`
+                : 'login';
+            requestAnimationFrame(() => {
+                document.querySelector(`[data-field="${firstInvalid}"]`)
+                    ?.scrollIntoView({block: 'center', behavior: 'smooth'});
+            });
+            return;
+        }
 
         if (isEdit && entity) {
 
@@ -634,13 +653,15 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
 
                 <Section title="Basics">
                     <div className="grid grid-cols-2 gap-4">
-                        <Input
-                            label="Name *"
-                            value={name}
-                            onChange={(e) => handleNameChange(e.target.value)}
-                            error={basicErrors.name}
-                            placeholder={currentET ? `Name of this ${currentET.name}` : 'Name'}
-                        />
+                        <div data-field="name">
+                            <Input
+                                label="Name *"
+                                value={name}
+                                onChange={(e) => handleNameChange(e.target.value)}
+                                error={basicErrors.name}
+                                placeholder={currentET ? `Name of this ${currentET.name}` : 'Name'}
+                            />
+                        </div>
                         <Input
                             label="Code"
                             value={code}
@@ -695,13 +716,25 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
                     <Section title="Details">
                         <div className="grid grid-cols-2 gap-4">
                             {currentET.attribute_schema.map((field) => (
-                                <AttrField
-                                    key={field.key}
-                                    field={field}
-                                    value={attrs[field.key]}
-                                    error={attrErrors[field.key]}
-                                    onChange={(v) => setAttrs((prev) => ({...prev, [field.key]: v}))}
-                                />
+                                <div key={field.key} data-field={`attr:${field.key}`}>
+                                    <AttrField
+                                        field={field}
+                                        value={attrs[field.key]}
+                                        error={attrErrors[field.key]}
+                                        onChange={(v) => {
+                                            setAttrs((prev) => ({...prev, [field.key]: v}));
+                                            // Drop the stale "Required" as soon as they type, the
+                                            // way the name and login fields already behave.
+                                            if (attrErrors[field.key]) {
+                                                setAttrErrors((prev) => {
+                                                    const next = {...prev};
+                                                    delete next[field.key];
+                                                    return next;
+                                                });
+                                            }
+                                        }}
+                                    />
+                                </div>
                             ))}
                         </div>
                     </Section>
@@ -713,18 +746,25 @@ export function EntityForm({entity, initialEntityTypeId, onClose}: Props) {
                         title="Login account"
                         hint={LOGIN_METHOD_NOTE[loginMethod] ?? undefined}
                     >
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4" data-field="login">
                             <Input
                                 label="Email"
                                 type="email"
                                 value={loginEmail}
-                                onChange={(e) => setLoginEmail(e.target.value)}
+                                onChange={(e) => {
+                                    setLoginEmail(e.target.value);
+                                    if (loginError) setLoginError(undefined);
+                                }}
+                                error={loginError}
                             />
                             <Input
                                 label="Mobile"
                                 type="tel"
                                 value={loginMobile}
-                                onChange={(e) => setLoginMobile(e.target.value)}
+                                onChange={(e) => {
+                                    setLoginMobile(e.target.value);
+                                    if (loginError) setLoginError(undefined);
+                                }}
                             />
                         </div>
                         {loginMethod !== 'otp_only' && (

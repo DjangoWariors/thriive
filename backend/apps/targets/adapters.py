@@ -49,7 +49,12 @@ class TargetRevisionAdapter(SubjectAdapter):
             'delta_pct': str(subject.delta_pct),
             'impact_amount': str(abs(subject.delta)),
             'reason': subject.reason,
-            'title': f'Target revision — {label} ({subject.old_value}→{subject.new_value})',
+            # Round for the title: the raw Decimals render as "78806.7000→69350" in the
+            # approvals inbox, which is a model dump, not a number a reviewer reads.
+            'title': (
+                f'Target revision — {label} '
+                f'({subject.old_value:,.0f} → {subject.new_value:,.0f})'
+            ),
         }
 
     def summary(self, subject) -> dict:

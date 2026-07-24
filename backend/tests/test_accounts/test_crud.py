@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import Role, User, UserRole
+from apps.accounts.permission_catalog import RESOURCE_LEVELS
 
 USERS_URL = '/api/v1/auth/users/'
 ROLES_URL = '/api/v1/auth/roles/'
@@ -91,14 +92,46 @@ class TestSeedRoles:
         }
         assert codes == expected
 
+    def test_approvers_can_reach_the_resource_they_approve(self):
+        """An ``*_approve`` gate is useless without read access to the resource itself:
+        the viewset gates on the resource, and only then does the action check the gate.
+        Granting the gate alone locked approvers out of their own queue entirely."""
+        call_command('seed_roles', verbosity=0)
+        pairs = [('exception_approve', 'exception_management'),
+                 ('payout_approve', 'final_payout')]
+        for role in Role.objects.all():
+            for gate, resource in pairs:
+                if role.permissions.get(gate, 'none') == 'none':
+                    continue
+                assert role.permissions.get(resource, 'none') != 'none', (
+                    f'{role.code} holds {gate} but cannot read {resource}'
+                )
+
+    def test_gate_resources_are_granted_full_or_none(self):
+        """Gate resources declare only full/none in the permission catalogue — a graded
+        level like 'team' cannot be rendered by the role matrix and reads as a mistake."""
+        call_command('seed_roles', verbosity=0)
+        gates = [code for code, levels in RESOURCE_LEVELS.items() if levels == ['full', 'none']]
+        for role in Role.objects.all():
+            for code in gates:
+                level = role.permissions.get(code, 'none')
+                assert level in ('full', 'none'), (
+                    f'{role.code}.{code} = {level!r}, but {code} is a full/none gate'
+                )
+
     def test_sales_exec_permissions_are_own_plus_territory_targets(self):
-        """Executives see their own data — plus targets/approvals at 'team', which the
-        territory scoping confines to the subtree they own (they are cascade reviewers)."""
+        """Executives see their own data, plus two widenings that the field screens need:
+        targets/approvals at 'team' (territory scoping confines that to the subtree they
+        own — they are cascade reviewers), and read-only reference lists so the KPI and
+        channel pickers on achievement-by-territory and plan-actuals can populate."""
         call_command('seed_roles', verbosity=0)
         exec_role = Role.objects.get(code='sales_exec')
         for resource, level in exec_role.permissions.items():
             if resource in ('target_management', 'workflow_management'):
                 assert level == 'team', f'sales_exec should hold team on {resource}'
+            elif resource in ('kpi_definitions', 'hierarchy_management'):
+                assert level == 'view_readonly', \
+                    f'sales_exec needs read-only reference data on {resource}, got {level}'
             else:
                 assert level in ('own_only', 'none'), \
                     f'sales_exec should not have {level} on {resource}'

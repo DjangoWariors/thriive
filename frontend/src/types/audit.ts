@@ -17,7 +17,9 @@ export interface ComputationLogEntry {
     id: number;
     computation_type: string;
     entity_id: number | null;
+    entity_label: string | null;
     period_id: number | null;
+    period_label: string | null;
     triggered_by_id: number | null;
     config_snapshot: Record<string, unknown> | null;
     result_snapshot: Record<string, unknown> | null;

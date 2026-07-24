@@ -37,13 +37,23 @@ class AccessLogSerializer(serializers.ModelSerializer):
 
 
 class ComputationLogSerializer(serializers.ModelSerializer):
+    entity_label = serializers.SerializerMethodField()
+    period_label = serializers.SerializerMethodField()
+
     class Meta:
         model = ComputationLog
         fields = [
-            'id', 'computation_type', 'entity_id', 'period_id',
+            'id', 'computation_type', 'entity_id', 'entity_label',
+            'period_id', 'period_label',
             'triggered_by_id', 'config_snapshot', 'result_snapshot', 'timestamp',
         ]
         read_only_fields = fields
+
+    def get_entity_label(self, obj) -> str | None:
+        return (self.context.get('node_labels') or {}).get(obj.entity_id)
+
+    def get_period_label(self, obj) -> str | None:
+        return (self.context.get('period_labels') or {}).get(obj.period_id)
 
 
 class ChainVerifyRequestSerializer(serializers.Serializer):

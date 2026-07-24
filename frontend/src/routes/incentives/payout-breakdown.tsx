@@ -15,7 +15,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Textarea } from '../../components/ui/Textarea';
 import { Tooltip } from '../../components/ui/Tooltip';
-import { formatCurrency, formatDate } from '../../utils/format';
+import { formatCurrency, formatDate, formatUnitCompact } from '../../utils/format';
 import { notify } from '../../utils/notify';
 import { apiErrorMessage } from '../../utils/apiError';
 import type { LineTreatment, PayoutLineItem } from '../../types/incentive';
@@ -255,8 +255,8 @@ export default function PayoutBreakdownPage() {
                       {line.kpi_code} · <span className="capitalize">{line.incentive_category}</span>
                     </p>
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(line.target_value)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(line.achieved_value)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{formatUnitCompact(line.target_value, line.kpi_unit)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{formatUnitCompact(line.achieved_value, line.kpi_unit)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-20"><ProgressBar value={Math.min(pct, 150)} size="sm" /></div>

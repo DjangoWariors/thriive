@@ -11,6 +11,7 @@ export interface EntityInfo {
   name: string;
   code: string;
   type: string;
+  type_name: string | null;
   path: string;
 }
 

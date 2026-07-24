@@ -46,7 +46,9 @@ export default function PartnerProfilePage() {
                         </div>
                         <div className="flex justify-between">
                             <dt className="text-gray-500">Type</dt>
-                            <dd className="font-medium text-gray-900">{user.entity_info.type}</dd>
+                            <dd className="font-medium text-gray-900">
+                                {user.entity_info.type_name ?? user.entity_info.type}
+                            </dd>
                         </div>
                     </dl>
                 </Card>

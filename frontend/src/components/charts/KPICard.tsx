@@ -3,7 +3,7 @@ import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { ProgressBar } from '../ui/ProgressBar';
 import { InfoTooltip } from '../ui/InfoTooltip';
-import { formatCurrency, formatPct } from '../../utils/format';
+import { formatPct, formatUnitCompact } from '../../utils/format';
 import type { KpiCard } from '../../types/achievement';
 
 interface KPICardProps {
@@ -52,7 +52,7 @@ export function KPICard({ card, showMultiplier = false, onClick }: KPICardProps)
         </div>
 
         <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-          <span>{formatCurrency(card.achieved)} / {formatCurrency(card.target)}</span>
+          <span>{formatUnitCompact(card.achieved, card.unit)} / {formatUnitCompact(card.target, card.unit)}</span>
           {growth !== null && (
             <span className={growth >= 0 ? 'flex items-center gap-0.5 text-success' : 'flex items-center gap-0.5 text-danger'}>
               {growth >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
@@ -67,7 +67,7 @@ export function KPICard({ card, showMultiplier = false, onClick }: KPICardProps)
             Projected <span className={projected >= 100 ? 'font-semibold text-success' : 'font-semibold text-warning'}>{formatPct(card.projected_pct)}</span>
           </span>
           {Number(card.required_run_rate) > 0 && (
-            <span className="text-gray-400">Need {formatCurrency(card.required_run_rate)}/day</span>
+            <span className="text-gray-400">Need {formatUnitCompact(card.required_run_rate, card.unit)}/day</span>
           )}
         </div>
     </>

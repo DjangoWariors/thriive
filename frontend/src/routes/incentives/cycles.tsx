@@ -9,8 +9,8 @@ import { useRBAC } from '../../hooks/useRBAC';
 import { usePeriodSelector } from '../../hooks/usePeriodSelector';
 import {
   useApproveCycle, useCloseCycle, useComputeCycle, useCycleReadiness, useCycleRegister,
-  useCycleReview, useCycles, useDisburseCycle, useFinalizeCycle, useOpenCycle, useRejectCycle,
-  useReleasePayout, useSubmitCycle,
+  useCycleReview, useCycles, useDisburseCycle, useFinalizeCycle, useInvalidateCycles,
+  useOpenCycle, useRejectCycle, useReleasePayout, useSubmitCycle,
 } from '../../hooks/useIncentives';
 import { incentiveService } from '../../services/incentiveService';
 import { Badge } from '../../components/ui/Badge';
@@ -65,6 +65,7 @@ export default function CycleWorkspacePage() {
   const periodHasCycle = selectedPeriodId !== null
     && cycles.some((c) => c.target_period === selectedPeriodId);
 
+  const refreshCycles = useInvalidateCycles();
   const openCycle = useOpenCycle();
   const finalize = useFinalizeCycle();
   const compute = useComputeCycle();
@@ -168,6 +169,7 @@ export default function CycleWorkspacePage() {
                 <Card>
                   <BulkJobProgress jobId={job.id} onDone={(j) => {
                     setJob(null);
+                    refreshCycles();
                     if (j.status === 'completed') {
                       notify.success(job.kind === 'finalize' ? 'Achievements frozen' : 'Final payouts computed');
                     } else {

@@ -8,6 +8,7 @@ export interface AchievementListItem {
   kpi: number;
   kpi_code: string;
   kpi_name: string;
+  kpi_unit: string;
   entity: number;
   entity_name: string;
   entity_code: string;
@@ -23,7 +24,6 @@ export interface AchievementListItem {
 
 export interface AchievementDetail extends AchievementListItem {
   period_name: string;
-  kpi_unit: string;
   gross_value: string;
   returns_value: string;
   daily_run_rate: string;
@@ -79,12 +79,14 @@ export interface ChannelMixSlice {
 
 export interface DashboardAlert {
   id: number;
+  entity_id: number;
   entity_name: string;
   rule_code: string;
   severity: 'info' | 'warning' | 'critical';
   metric: string;
   metric_value: string;
   message: string;
+  kpi_id: number | null;
   kpi_code: string | null;
 }
 
@@ -101,7 +103,7 @@ export interface DashboardSummary {
 }
 
 export interface DashboardData {
-  entity: { id: number; name: string; code: string; type: string | null } | null;
+  entity: { id: number; name: string; code: string; type: string | null; is_own: boolean } | null;
   summary: DashboardSummary;
   kpi_cards: KpiCard[];
   child_ranking: RankRow[] | null;
