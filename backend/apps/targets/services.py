@@ -22,6 +22,7 @@ from apps.assignments.services import AssignmentService
 from apps.audit.services import AuditService
 from apps.core.exceptions import BusinessError
 from apps.hierarchy.models import Channel, GeographyNode
+from apps.jobs.utils import count_rows
 from apps.kpi_engine.models import KPIDefinition
 from apps.master_data.models import SKUGroup
 
@@ -610,10 +611,38 @@ class TargetService:
         return {'approved': count}
 
     # ── bulk import ─────────────────────────────────────────────────────────
+    # Every changed row is a governed edit (cap check, policy resolve, revision insert), so
+    # the import is row-by-row by construction: measured at ~250 rows/s creating and ~90
+    # rows/s updating, all inside one transaction. 10k rows is ~2 minutes at the slow end —
+    # past that a file would hold locks for tens of minutes, and generating targets for a
+    # whole tree is a plan run's job, not a spreadsheet's.
+    _MAX_IMPORT_ROWS = 10_000
+
+    @staticmethod
+    def assert_importable(row_count: int) -> None:
+        """Guard the upload size before any work starts. Called by the API so nothing is
+        queued, and by the import itself so every caller carries the same boundary."""
+        if row_count > TargetService._MAX_IMPORT_ROWS:
+            raise BusinessError(
+                f'This file has {row_count:,} rows — bulk import is capped at '
+                f'{TargetService._MAX_IMPORT_ROWS:,}. Every changed row goes through the same '
+                'approval checks as an edit in the grid, so a file this size would hold the '
+                'targets locked for tens of minutes. Split it by territory, or set the whole '
+                'tree at once with a plan run.')
+
     @staticmethod
     @transaction.atomic
-    def bulk_import_allocations(csv_text: str, actor=None) -> dict:
-        """Idempotent upsert of allocations from CSV. All-or-nothing validation."""
+    def bulk_import_allocations(csv_text: str, actor=None, reason: str = '') -> dict:
+        """Idempotent upsert of allocations from CSV. All-or-nothing.
+
+        A fresh row is an initial load and lands approved. Overwriting a row that already
+        exists is an *edit* of a number someone may be working to, so it goes through
+        ``modify_allocation`` — change caps, required reasons, maker-checker banding, the
+        locked-period guard and the ``TargetRevision`` trail all apply, exactly as they do
+        for an edit typed into the grid. Without that, re-uploading an exported file would
+        be the easy way around the governance the plan module is built on.
+        """
+        TargetService.assert_importable(count_rows(csv_text, 'csv'))
         reader = csv.DictReader(io.StringIO(csv_text))
         if reader.fieldnames is None:
             raise BusinessError('CSV is empty or has no header row.')
@@ -626,31 +655,51 @@ class TargetService:
         for i, raw in enumerate(reader, start=2):
             row = {(k.strip() if k else k): (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
             try:
-                parsed.append(TargetService._resolve_import_row(row))
+                parsed.append((i, TargetService._resolve_import_row(row)))
             except BusinessError as exc:
                 errors.append({'row': i, 'errors': [str(exc)]})
 
         if errors:
-            return {'status': 'validation_failed', 'created': 0, 'updated': 0, 'errors': errors}
+            return {'status': 'validation_failed', 'created': 0, 'updated': 0,
+                    'unchanged': 0, 'errors': errors}
 
-        created = updated = 0
-        for r in parsed:
-            fields = {'target_value': r['value'], 'original_target_value': r['value'],
-                      'source': TargetAllocation.BULK}
-            # A fresh row is the initial load; overwriting an existing (live) number is an
-            # edit and lands pending for a checker — the same rule as manual edits.
-            _, was_created = TargetAllocation.objects.update_or_create(
+        created = updated = unchanged = 0
+        for line, r in parsed:
+            existing = TargetAllocation.objects.filter(
                 target_period=r['period'], kpi=r['kpi'], geography_node=r['geography_node'],
-                channel=r['channel'], sku_group=r['sku_group'],
-                defaults={**fields, 'status': TargetAllocation.PENDING},
-                create_defaults={**fields, 'status': TargetAllocation.APPROVED},
-            )
-            created += int(was_created)
-            updated += int(not was_created)
+                channel=r['channel'], sku_group=r['sku_group'], is_active=True,
+            ).first()
+            if existing is None:
+                TargetAllocation.objects.create(
+                    target_period=r['period'], kpi=r['kpi'], geography_node=r['geography_node'],
+                    channel=r['channel'], sku_group=r['sku_group'],
+                    target_value=r['value'], original_target_value=r['value'],
+                    source=TargetAllocation.BULK, status=TargetAllocation.APPROVED)
+                created += 1
+            elif existing.effective_target == r['value']:
+                # Re-uploading an exported file untouched must be a no-op, not a wall of
+                # zero-delta revisions — most rows in a round trip are unchanged.
+                unchanged += 1
+            else:
+                try:
+                    TargetService.modify_allocation(existing, r['value'], reason=reason,
+                                                   actor=actor, rebalance=False)
+                except BusinessError as exc:
+                    errors.append({'row': line, 'errors': [str(exc)]})
+                    continue
+                updated += 1
+
+        if errors:
+            # Roll the whole file back: a half-applied plan is worse than a rejected upload,
+            # and the caller (import_allocations_task) already reports this as a failed job.
+            transaction.set_rollback(True)
+            return {'status': 'validation_failed', 'created': 0, 'updated': 0,
+                    'unchanged': 0, 'errors': errors}
 
         AuditService.log('bulk_import', 'targets.TargetAllocation', 0, actor,
-                         {'created': created, 'updated': updated})
-        return {'status': 'success', 'created': created, 'updated': updated, 'errors': []}
+                         {'created': created, 'updated': updated, 'unchanged': unchanged})
+        return {'status': 'success', 'created': created, 'updated': updated,
+                'unchanged': unchanged, 'errors': []}
 
     @staticmethod
     def _resolve_import_row(row: dict) -> dict:
@@ -668,6 +717,10 @@ class TargetService:
             raise BusinessError(f'Unknown geography node "{row.get("geography_node_code")}".')
         channel = Channel.objects.filter(code=row['channel_code']).first() if row.get('channel_code') else None
         sku_group = SKUGroup.objects.filter(code=row['sku_group_code']).first() if row.get('sku_group_code') else None
+        # An empty cell is a gap in the file, not a target of zero — reading it as zero would
+        # silently wipe a number, and would let the blank template upload as-is.
+        if str(row.get('target_value') or '').strip() == '':
+            raise BusinessError('target_value is required — fill in a number for every row.')
         return {'period': period, 'kpi': kpi, 'geography_node': node, 'channel': channel,
                 'sku_group': sku_group, 'value': _to_decimal(row.get('target_value'), 'target_value')}
 

@@ -92,6 +92,19 @@ def _pct_of(part, whole):
     return str((part / whole * 100).quantize(_PCT_Q, rounding=ROUND_HALF_UP))
 
 
+def _chunked(iterable, size):
+    """Yield lists of at most ``size`` — lets a streamed cursor be joined against a
+    per-chunk lookup without ever holding the whole result set."""
+    batch = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) == size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
 class PlanService:
 
     # ── plan lifecycle ───────────────────────────────────────────────────────
@@ -926,6 +939,109 @@ class PlanService:
             'rows': [row(c['id'], c['name'], c['code'], c['level']) for c in children],
             'page': page, 'page_size': page_size, 'total': total,
         }
+
+    # ── export ───────────────────────────────────────────────────────────────
+    # Importer keys first (services.TargetService._resolve_import_row reads exactly these),
+    # then read-only context. The importer ignores unknown columns, so a file exported here
+    # re-imports unmodified — that round trip is the point of the export.
+    IMPORT_FIELDS = [
+        'period_code', 'kpi_code', 'geography_node_code', 'channel_code', 'sku_group_code',
+        'target_value',
+    ]
+    # Import contract first, then read-only context — composed, not restated, so the two
+    # can never drift apart.
+    EXPORT_FIELDS = IMPORT_FIELDS + [
+        'geography_node_name', 'level', 'owner_code', 'owner_name',
+        'plan_code', 'status', 'source', 'is_modified',
+        'base_value', 'original_target_value',
+    ]
+
+    @staticmethod
+    def export_rows(plan: TargetPlan, kpis, parent=None, period=None, nodes_qs=None):
+        """The planning grid as a flat, re-importable row stream: every level under
+        ``parent``, not the one level ``grid`` serves. Returns ``(fieldnames, iterator)``
+        so the view can stream without buffering.
+
+        Filtered by dimension (period × kpi × channel) rather than by ``plan_id`` — the
+        grid reads the same way, so what exports is what the planner sees on screen.
+        ``nodes_qs`` carries the caller's territory scope.
+        """
+        parent = parent or plan.root_geography
+        period = period or plan.period
+        qs = TargetAllocation.objects.filter(
+            target_period=period, kpi__in=kpis, channel=plan.channel,
+            geography_node__path__startswith=parent.path, is_active=True,
+        ).select_related('target_period', 'kpi', 'geography_node', 'channel', 'sku_group', 'plan')
+        if nodes_qs is not None:
+            qs = qs.filter(geography_node_id__in=nodes_qs)
+        qs = qs.order_by('geography_node__path', 'kpi__code', 'sku_group__code')
+        # Direct ownership rides along in the cursor itself — no second pass over 200k rows.
+        qs = AssignmentService.annotate_direct_owner(qs, 'geography_node_id')
+
+        def rows():
+            # Rows whose territory has no owner of its own inherit the nearest owned ancestor
+            # (the grid's Owner-column rule). Only those pay a lookup, and the shared cache
+            # carries ancestors across chunks — so the walk-up is paid once, not per chunk.
+            inherited: dict[str, tuple[str, str] | None] = {}
+            for chunk in _chunked(qs.iterator(chunk_size=_CHUNK), _CHUNK):
+                orphans = [(a.geography_node_id, a.geography_node.path)
+                           for a in chunk if a.owner_code is None]
+                owners = (AssignmentService.owner_labels_for_nodes(
+                    set(orphans), inherited_cache=inherited) if orphans else {})
+                for a in chunk:
+                    owner_code, owner_name = (
+                        (a.owner_code, a.owner_name) if a.owner_code is not None
+                        else owners.get(a.geography_node_id, ('', '')))
+                    yield {
+                        'period_code': a.target_period.code,
+                        'kpi_code': a.kpi.code,
+                        'geography_node_code': a.geography_node.code,
+                        'channel_code': a.channel.code if a.channel else '',
+                        'sku_group_code': a.sku_group.code if a.sku_group else '',
+                        # The number on screen — an override beats the plan-committed value.
+                        'target_value': a.effective_target,
+                        'geography_node_name': a.geography_node.name,
+                        'level': a.geography_node.level,
+                        'owner_code': owner_code,
+                        'owner_name': owner_name,
+                        'plan_code': a.plan.code if a.plan else '',
+                        'status': a.status,
+                        'source': a.source,
+                        'is_modified': a.is_modified,
+                        'base_value': a.base_value if a.base_value is not None else '',
+                        'original_target_value': a.original_target_value,
+                    }
+
+        return PlanService.EXPORT_FIELDS, rows()
+
+    @staticmethod
+    def import_template(plan: TargetPlan, nodes_qs=None) -> tuple[list[str], list[dict]]:
+        """A starter file for the *first* load, when there is nothing to export yet.
+
+        Built from the plan's real period, KPI and territory codes — the importer resolves
+        everything by code, so a made-up sample would teach the wrong ones. ``target_value``
+        is deliberately left blank: the template is not uploadable until someone fills the
+        numbers in (a blank target is rejected, not read as zero).
+        """
+        nodes = GeographyNode.objects.filter(
+            path__startswith=plan.root_geography.path, is_active=True,
+        ).exclude(pk=plan.root_geography_id)
+        if plan.planning_grain:
+            nodes = nodes.filter(level=plan.planning_grain)
+        if nodes_qs is not None:
+            nodes = nodes.filter(pk__in=nodes_qs)
+        # Deepest first: without a grain the leaves are what a planner actually fills in.
+        samples = list(nodes.order_by('-depth', 'path')[:2]) or [plan.root_geography]
+
+        rows = [{
+            'period_code': plan.period.code,
+            'kpi_code': plan_kpi.kpi.code,
+            'geography_node_code': node.code,
+            'channel_code': plan.channel.code if plan.channel else '',
+            'sku_group_code': '',
+            'target_value': '',
+        } for plan_kpi in plan.plan_kpis.select_related('kpi') for node in samples]
+        return PlanService.IMPORT_FIELDS, rows
 
     # ── shared ───────────────────────────────────────────────────────────────
     @staticmethod

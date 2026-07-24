@@ -208,3 +208,45 @@ def test_rebalance_records_sibling_revisions(period, kpi, root, child_a, child_b
     assert b.effective_target == Decimal('4000')
     sib_rev = b.revisions.get()
     assert sib_rev.source == TargetRevision.REBALANCE and sib_rev.new_value == Decimal('4000')
+
+
+# ── bulk import is governed too (the export → edit → re-import round trip) ────
+def _import_csv(period, kpi, node, value):
+    return ('period_code,kpi_code,geography_node_code,target_value\n'
+            f'{period.code},{kpi.code},{node.code},{value}\n')
+
+
+def test_bulk_import_update_is_capped_and_rolls_the_file_back(period, kpi, root, child_a):
+    """Re-uploading an edited export must not be a way around the change cap. The file is
+    all-or-nothing: one blocked row rejects the upload, leaving nothing half-applied."""
+    _policy(auto_approve_within_pct=Decimal('5'), hard_ceiling_pct=Decimal('20'),
+            requires_reason=False)
+    a = _alloc(period, kpi, root, '1000')
+    b = _alloc(period, kpi, child_a, '1000')
+
+    csv_text = (_import_csv(period, kpi, root, '1050')          # +5% — inside the band
+                + f'{period.code},{kpi.code},{child_a.code},5000\n')  # +400% — past the ceiling
+    result = TargetService.bulk_import_allocations(csv_text)
+
+    assert result['status'] == 'validation_failed'
+    assert result['errors'][0]['row'] == 3
+    a.refresh_from_db()
+    b.refresh_from_db()
+    assert a.effective_target == Decimal('1000')  # the good row rolled back with the bad one
+    assert b.effective_target == Decimal('1000')
+    assert TargetRevision.objects.count() == 0
+
+
+def test_bulk_import_update_writes_a_revision_and_keeps_the_anchor(period, kpi, root):
+    """The cap is measured against original_target_value — an upload must not reset it,
+    or a series of small uploads would walk the target anywhere."""
+    _policy(auto_approve_within_pct=Decimal('50'), requires_reason=False)
+    a = _alloc(period, kpi, root, '1000')
+    TargetService.bulk_import_allocations(_import_csv(period, kpi, root, '1200'),
+                                          reason='AOP revision')
+    a.refresh_from_db()
+    assert a.effective_target == Decimal('1200')
+    assert a.original_target_value == Decimal('1000')
+    rev = a.revisions.get()
+    assert rev.old_value == Decimal('1000') and rev.new_value == Decimal('1200')
+    assert rev.delta_pct == Decimal('20.00') and rev.reason == 'AOP revision'

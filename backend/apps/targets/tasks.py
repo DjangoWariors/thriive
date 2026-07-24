@@ -25,19 +25,19 @@ def execute_plan_run_task(job_id, run_id):
 
 
 @shared_task
-def import_allocations_task(job_id, raw, user_id=None):
+def import_allocations_task(job_id, raw, user_id=None, reason=''):
     from apps.targets.services import TargetService
 
     job = BulkJob.objects.get(pk=job_id)
     JobService.mark_running(job)
     try:
-        result = TargetService.bulk_import_allocations(raw, actor=_user(user_id))
+        result = TargetService.bulk_import_allocations(raw, actor=_user(user_id), reason=reason)
     except Exception as exc:
         JobService.fail(job, errors=[{'row': 0, 'errors': [str(exc)]}])
         return
     if result.get('status') == 'validation_failed':
         JobService.fail(job, errors=result.get('errors', []))
         return
-    processed = result.get('created', 0) + result.get('updated', 0)
+    processed = result.get('created', 0) + result.get('updated', 0) + result.get('unchanged', 0)
     JobService.update_progress(job, processed=processed, success=processed, error=0)
     JobService.complete(job, result=result)

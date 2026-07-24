@@ -1,5 +1,6 @@
 import api from './api';
 import type { PaginatedResponse } from '../types/api';
+import type { BulkJob } from '../types/jobs';
 import type {
   AllocationRecipe,
   CostPreview,
@@ -81,6 +82,22 @@ export const targetService = {
     const { data } = await api.get<GridResponse>(`${BASE}/plans/${planId}/grid/`, { params });
     return data;
   },
+  /** The grid's whole subtree as a CSV blob — the leading columns are the import contract,
+   * so the downloaded file can be edited and pushed back through `bulkImportAllocations`. */
+  async exportGrid(planId: number, params: { kpi?: number; parent?: number; period?: number }): Promise<Blob> {
+    const { data } = await api.get<Blob>(`${BASE}/plans/${planId}/export/`, {
+      params, responseType: 'blob',
+    });
+    return data;
+  },
+  /** A blank starter file carrying the plan's real period/KPI/territory codes — for the
+   * first load, when there is nothing to export yet. */
+  async importTemplate(planId: number): Promise<Blob> {
+    const { data } = await api.get<Blob>(`${BASE}/plans/${planId}/import-template/`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
   async gapBoard(planId: number): Promise<GapBoard> {
     const { data } = await api.get<GapBoard>(`${BASE}/plans/${planId}/gap-board/`);
     return data;
@@ -146,6 +163,12 @@ export const targetService = {
   //allocations (kept read/edit paths)
   async modify(allocationId: number, body: { override_value: string; reason?: string; rebalance?: boolean }): Promise<TargetAllocation> {
     const { data } = await api.post<TargetAllocation>(`${BASE}/allocations/${allocationId}/modify/`, body);
+    return data;
+  },
+  /** Upload edited targets. Async (BulkJob); new rows load straight in, changes to existing
+   * numbers go through the same change caps and maker-checker as an edit in the grid. */
+  async bulkImportAllocations(csvText: string, reason = ''): Promise<BulkJob> {
+    const { data } = await api.post<BulkJob>(`${BASE}/allocations/bulk/`, { data: csvText, reason });
     return data;
   },
   /** Revision timeline for one target cell — who changed what, when and why. */

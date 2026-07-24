@@ -1,6 +1,8 @@
+import csv
+import io
 from datetime import date
 
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
@@ -279,10 +281,15 @@ class TargetAllocationViewSet(ReadOnlyModelViewSet):
         ser.is_valid(raise_exception=True)
         uploaded = ser.validated_data.get('file')
         raw = uploaded.read().decode('utf-8') if uploaded else ser.validated_data.get('data', '')
+        rows = count_rows(raw, 'csv')
+        # Refuse an oversized file here, so the caller is told now rather than watching a
+        # queued job fail. The service repeats the check for every other caller.
+        TargetService.assert_importable(rows)
         from apps.targets.tasks import import_allocations_task
         job = JobService.create(BulkJob.JobType.TARGET_IMPORT, request.user,
-                                total_rows=count_rows(raw, 'csv'), request_id=getattr(request, 'request_id', ''))
-        job = run_or_dispatch(import_allocations_task, job, raw, request.user.pk)
+                                total_rows=rows, request_id=getattr(request, 'request_id', ''))
+        job = run_or_dispatch(import_allocations_task, job, raw, request.user.pk,
+                              ser.validated_data.get('reason', ''))
         return Response(BulkJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
@@ -432,6 +439,84 @@ class TargetPlanViewSet(ModelViewSet):
             plan, kpi, parent=parent, period=period, children_qs=children_qs,
             page=int(p.get('page', 1)), page_size=int(p.get('page_size', 100)),
             mask_parent=mask_parent))
+
+    @extend_schema(
+        tags=['Target Plans'], summary='Export the planning grid as CSV',
+        description=(
+            'Stream every level under ``parent`` (the grid serves one level at a time; this '
+            'serves the whole subtree) as a CSV download. The leading columns are exactly the '
+            'bulk-import contract, so the file can be edited and uploaded back through '
+            'POST /api/v1/targets/allocations/bulk/ — the trailing context columns are ignored '
+            'on import. Honours the same territory scoping as the grid.'
+        ),
+        parameters=[OpenApiParameter('kpi', required=False, type=int,
+                                     description='Omit to export every KPI on the plan.'),
+                    OpenApiParameter('parent', required=False, type=int),
+                    OpenApiParameter('period', required=False, type=int)],
+        responses={200: OpenApiResponse(description='CSV file')},
+    )
+    @action(detail=True, methods=['get'])
+    def export(self, request, pk=None):
+        plan = self.get_object()
+        p = request.query_params
+        try:
+            kpis = ([KPIDefinition.objects.get(pk=p['kpi'])] if p.get('kpi')
+                    else [pk_.kpi for pk_ in plan.plan_kpis.select_related('kpi')])
+            parent = GeographyNode.objects.get(pk=p['parent']) if p.get('parent') else None
+            period = TargetPeriod.objects.get(pk=p['period']) if p.get('period') else None
+        except (KPIDefinition.DoesNotExist, GeographyNode.DoesNotExist, TargetPeriod.DoesNotExist):
+            raise BusinessError('kpi/parent/period must exist.')
+        if parent is None:
+            parent = PlanService.default_grid_parent(plan, request.user)
+        # Same territory boundary as grid(): a scoped user exports only what they can see.
+        nodes_qs = scope_transactions_by_territory(
+            GeographyNode.objects.filter(is_active=True), request.user,
+            self.required_permission, field='id').values('id')
+        fieldnames, rows = PlanService.export_rows(
+            plan, kpis, parent=parent, period=period, nodes_qs=nodes_qs)
+
+        # Echo-writer streaming: writerow returns the encoded line, so a whole-plan export
+        # never buffers the file (same pattern as the entity export).
+        class _Echo:
+            def write(self, value):
+                return value
+
+        writer = csv.DictWriter(_Echo(), fieldnames=fieldnames)
+
+        def _lines():
+            yield writer.writeheader()
+            for row in rows:
+                yield writer.writerow(row)
+
+        resp = StreamingHttpResponse(_lines(), content_type='text/csv')
+        resp['Content-Disposition'] = f'attachment; filename="plan-{plan.code}-targets.csv"'
+        return resp
+
+    @extend_schema(
+        tags=['Target Plans'], summary='Download a blank import template for this plan',
+        description=(
+            'A starter CSV for the first load, when there is nothing to export yet. Columns '
+            'are the bulk-import contract; the sample rows carry the plan\'s real period, KPI '
+            'and territory codes, with target_value left blank so the file cannot be uploaded '
+            'until the numbers are filled in.'
+        ),
+        responses={200: OpenApiResponse(description='CSV template file')},
+    )
+    @action(detail=True, methods=['get'], url_path='import-template')
+    def import_template(self, request, pk=None):
+        plan = self.get_object()
+        nodes_qs = scope_transactions_by_territory(
+            GeographyNode.objects.filter(is_active=True), request.user,
+            self.required_permission, field='id').values('id')
+        fieldnames, rows = PlanService.import_template(plan, nodes_qs=nodes_qs)
+
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        resp = HttpResponse(buffer.getvalue(), content_type='text/csv')
+        resp['Content-Disposition'] = f'attachment; filename="plan-{plan.code}-import-template.csv"'
+        return resp
 
     @extend_schema(tags=['Target Plans'],
                    summary='Explain a territory\'s numbers from the latest committed run',
@@ -732,8 +817,6 @@ class TargetRevisionViewSet(ReadOnlyModelViewSet):
                    responses={200: OpenApiResponse(description='text/csv')})
     @action(detail=False, methods=['get'])
     def export(self, request):
-        import csv
-        import io
         rows = self.filter_queryset(self.get_queryset())
         buf = io.StringIO()
         writer = csv.writer(buf)

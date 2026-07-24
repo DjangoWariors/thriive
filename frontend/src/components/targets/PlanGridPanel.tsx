@@ -1,19 +1,28 @@
 import { useMemo, useState } from 'react';
-import { GitBranchPlus } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Download, GitBranchPlus, Upload } from 'lucide-react';
 import { useAllocationRevisions, usePlanExplain, useReviewTasks } from '../../hooks/useTargets';
 import { useKpiDefinitions } from '../../hooks/useKpi';
 import { useGeographyTypes } from '../../hooks/useEntities';
+import { useRBAC } from '../../hooks/useRBAC';
+import { targetService } from '../../services/targetService';
 import type { GridOwner, GridRow, TargetPlan, TargetRevisionEntry } from '../../types/target';
 import { GeoNodeCombobox, type GeoSelection } from '../entity/GeoNodeCombobox';
+import { BulkJobProgress } from '../jobs/BulkJobProgress';
 import { PlanGrid } from './PlanGrid';
 import { PersonTargetDrawer } from './PersonTargetDrawer';
 import { TargetEditDialog } from './TargetEditDialog';
 import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
+import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Tabs } from '../ui/Tabs';
 import { TableSkeleton } from '../ui/Skeleton';
+import { downloadBlob } from '../../utils/download';
+import { notify } from '../../utils/notify';
+import { apiErrorMessage } from '../../utils/apiError';
 import { formatDate } from '../../utils/format';
 import { formatInr as inr } from '../../utils/format';
 
@@ -34,6 +43,9 @@ export function PlanGridPanel({ plan, kpiId, setKpiId, isAdmin }: {
   const [editRow, setEditRow] = useState<GridRow | null>(null);
   const [explainRow, setExplainRow] = useState<GridRow | null>(null);
   const [ownerFor, setOwnerFor] = useState<GridOwner | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const { canWrite } = useRBAC();
 
   const { data: geoTypes } = useGeographyTypes();
   const geoTypeCode = geoTypes?.results?.[0]?.code ?? '';
@@ -52,6 +64,20 @@ export function PlanGridPanel({ plan, kpiId, setKpiId, isAdmin }: {
   };
   // Task holders go through the review path so their task flips to adjusted/escalated.
   const editMode = !isAdmin && plan.status === 'in_review' && myOpenTask ? 'reviewer' : 'admin';
+
+  const scopeLabel = jumpTo?.name ?? (isAdmin ? plan.root_geography_name : 'my territory');
+
+  async function exportGrid() {
+    setExporting(true);
+    try {
+      const blob = await targetService.exportGrid(plan.id, { kpi: kpiId, parent: jumpTo?.id });
+      downloadBlob(blob, `plan-${plan.code}-${kpiDef?.code ?? kpiId}.csv`);
+    } catch (e) {
+      notify.error(apiErrorMessage(e, 'Sorry, we couldn’t export these targets'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (plan.kpis.length === 0) {
     return <EmptyState icon={GitBranchPlus} title="No KPIs on this plan" description="Add KPIs when creating the plan." />;
@@ -73,6 +99,20 @@ export function PlanGridPanel({ plan, kpiId, setKpiId, isAdmin }: {
             {isAdmin ? `Reset to ${plan.root_geography_name}` : 'Reset to my territory'}
           </button>
         )}
+        {/* The grid shows one level at a time — the export is how you see (and work on)
+            the whole subtree at once. It downloads exactly what's in scope above. */}
+        <div className="ml-auto flex items-center gap-2 pb-1">
+          <Button variant="outline" size="sm" icon={<Download className="h-3.5 w-3.5" />}
+                  loading={exporting} onClick={() => void exportGrid()}>
+            Export {scopeLabel}
+          </Button>
+          {isAdmin && canWrite('target_management') && (
+            <Button variant="outline" size="sm" icon={<Upload className="h-3.5 w-3.5" />}
+                    onClick={() => setImportOpen(true)}>
+              Import
+            </Button>
+          )}
+        </div>
       </div>
       <div className="mt-2 overflow-x-auto">
         <PlanGrid planId={plan.id} kpiId={kpiId}
@@ -80,12 +120,121 @@ export function PlanGridPanel({ plan, kpiId, setKpiId, isAdmin }: {
                   showReview={showReview} canEdit={canEdit}
                   onEdit={setEditRow} onExplain={setExplainRow} onOwner={setOwnerFor} />
       </div>
+      <TargetImportDialog plan={plan} open={importOpen} onClose={() => setImportOpen(false)} />
       <TargetEditDialog plan={plan} row={editRow} mode={editMode} onClose={() => setEditRow(null)} />
       <ExplainModal planId={plan.id} row={explainRow} onClose={() => setExplainRow(null)} />
       <PersonTargetDrawer owner={ownerFor} periodId={plan.period} kpiId={kpiId}
                           includeDraft={isAdmin && !['published', 'locked', 'closed'].includes(plan.status)}
                           onClose={() => setOwnerFor(null)} />
     </>
+  );
+}
+
+const IMPORT_COLUMNS =
+  'period_code, kpi_code, geography_node_code, channel_code, sku_group_code, target_value';
+
+/** Upload an edited export. The extra columns the export carries (names, status, base) are
+ * ignored on the way in, so the downloaded file goes back unchanged. */
+function TargetImportDialog({ plan, open, onClose }: {
+  plan: TargetPlan; open: boolean; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [csvText, setCsvText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [reason, setReason] = useState('');
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [templating, setTemplating] = useState(false);
+
+  function close() {
+    setCsvText('');
+    setFileName('');
+    setReason('');
+    setJobId(null);
+    onClose();
+  }
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setCsvText(String(reader.result ?? ''));
+    reader.readAsText(file);
+  }
+
+  async function downloadTemplate() {
+    setTemplating(true);
+    try {
+      const blob = await targetService.importTemplate(plan.id);
+      downloadBlob(blob, `plan-${plan.code}-import-template.csv`);
+    } catch (e) {
+      notify.error(apiErrorMessage(e, 'Sorry, we couldn’t build a template'));
+    } finally {
+      setTemplating(false);
+    }
+  }
+
+  async function upload() {
+    setSubmitting(true);
+    try {
+      const job = await targetService.bulkImportAllocations(csvText, reason);
+      setJobId(job.id);
+    } catch (e) {
+      notify.error(apiErrorMessage(e, 'We couldn’t start the upload. Please check the file and try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <Modal open onClose={close} title={`Import targets — ${plan.name}`} size="md">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          Upload a CSV with these columns — an exported file already has them. Re-uploading
+          unchanged rows does nothing; changed numbers go through the same change caps and
+          approvals as an edit in the grid, so they may land pending a checker. Up to 10,000
+          rows at a time — to set a whole tree at once, use a plan run instead.
+          <code className="mt-1 block overflow-x-auto rounded bg-white px-2 py-1 text-[11px] text-gray-700">
+            {IMPORT_COLUMNS}
+          </code>
+          <button type="button" onClick={() => void downloadTemplate()} disabled={templating}
+                  className="mt-2 font-medium text-primary hover:underline disabled:opacity-50">
+            {templating ? 'Building…' : 'Download a blank template'}
+          </button>
+          {' '}— pre-filled with this plan’s period, KPI and territory codes.
+        </div>
+
+        {jobId === null ? (
+          <>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-6 text-sm text-gray-500 hover:border-primary hover:text-primary">
+              <Upload className="h-4 w-4" />
+              {fileName || 'Choose a file from your computer…'}
+              <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} />
+            </label>
+            <Input label="Why are these targets changing?" value={reason}
+                   onChange={(e) => setReason(e.target.value)}
+                   placeholder="Recorded on every change this upload makes"
+                   hint="Required when a change-cap policy asks for a reason." />
+            <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+              <Button type="button" variant="outline" onClick={close}>Cancel</Button>
+              <Button onClick={() => void upload()} loading={submitting} disabled={!csvText.trim()}>
+                Upload
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <BulkJobProgress jobId={jobId}
+                             onDone={() => void qc.invalidateQueries({ queryKey: ['targets'] })} />
+            <div className="flex justify-end border-t border-gray-100 pt-4">
+              <Button onClick={close}>Done</Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 

@@ -290,6 +290,10 @@ class AllocationBulkImportSerializer(serializers.Serializer):
     data = serializers.CharField(required=False, allow_blank=True,
                                  help_text='Raw CSV text. Omit when uploading a file.')
     file = serializers.FileField(required=False, help_text='CSV file. Takes precedence over data.')
+    reason = serializers.CharField(
+        required=False, allow_blank=True, default='',
+        help_text='Why the targets are changing. Carried onto every revision the upload '
+                  'raises; required when a revision policy asks for one.')
 
     def validate(self, attrs):
         if not attrs.get('data') and not attrs.get('file'):

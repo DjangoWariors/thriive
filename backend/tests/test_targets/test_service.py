@@ -118,18 +118,31 @@ def test_policy_tiebreak_is_deterministic(period, kpi, geo):
 # ── bulk import idempotency ──────────────────────────────────────────────────
 def test_bulk_import_idempotent(period, kpi, geo):
     child_a = geo['town_a']
-    csv = (
-        'period_code,kpi_code,geography_node_code,target_value\n'
-        f'{period.code},{kpi.code},{child_a.code},5000\n'
-    )
-    first = TargetService.bulk_import_allocations(csv)
+
+    def csv_for(value):
+        return ('period_code,kpi_code,geography_node_code,target_value\n'
+                f'{period.code},{kpi.code},{child_a.code},{value}\n')
+
+    first = TargetService.bulk_import_allocations(csv_for('5000'))
     assert first['created'] == 1
     row = TargetAllocation.objects.get(target_period=period, kpi=kpi, geography_node=child_a)
     assert row.status == TargetAllocation.APPROVED  # fresh row = initial load
-    second = TargetService.bulk_import_allocations(csv)
-    assert second['updated'] == 1 and second['created'] == 0
+
+    # Re-uploading the same numbers is a no-op — an untouched round trip must not knock
+    # every row into review.
+    second = TargetService.bulk_import_allocations(csv_for('5000'))
+    assert second['unchanged'] == 1 and second['updated'] == 0 and second['created'] == 0
     row.refresh_from_db()
-    assert row.status == TargetAllocation.PENDING  # overwriting a live number = an edit, needs a checker
+    assert row.status == TargetAllocation.APPROVED
+
+    # Changing a live number IS an edit: it goes through the governed path.
+    third = TargetService.bulk_import_allocations(csv_for('6000'))
+    assert third['updated'] == 1 and third['created'] == 0
+    row.refresh_from_db()
+    assert row.status == TargetAllocation.PENDING  # needs a checker
+    assert row.effective_target == Decimal('6000')
+    assert row.original_target_value == Decimal('5000')  # the change-cap anchor holds
+    assert row.revisions.count() == 1
     assert TargetAllocation.objects.filter(target_period=period, kpi=kpi, geography_node=child_a).count() == 1
 
 

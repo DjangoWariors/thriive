@@ -8,7 +8,7 @@ carries an "as of" date.
 from datetime import date, timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 
 from apps.audit.services import AuditService
 from apps.core.exceptions import BusinessError
@@ -24,6 +24,13 @@ def _as_of(on: date | None) -> date:
 def _effective_filter(on: date) -> Q:
     """Rows whose [effective_from, effective_to] window contains ``on``."""
     return Q(effective_from__lte=on) & (Q(effective_to__isnull=True) | Q(effective_to__gte=on))
+
+
+def _ancestor_paths(path: str) -> list[str]:
+    """``/IN/ZA/A1/`` → ``['/IN/ZA/A1/', '/IN/ZA/', '/IN/']`` — the territory itself first,
+    then each ancestor, so a nearest-owner lookup is just the first hit."""
+    codes = [c for c in path.split('/') if c]
+    return ['/' + '/'.join(codes[:i]) + '/' for i in range(len(codes), 0, -1)]
 
 
 class AssignmentService:
@@ -278,6 +285,84 @@ class AssignmentService:
         for a in rows:
             result.setdefault(a.scope_id, a.assignee)  # newest effective_from wins
         return result
+
+    @staticmethod
+    def annotate_direct_owner(qs, node_field: str, on: date | None = None):
+        """Annotate ``owner_code``/``owner_name`` — the territory's *direct* owner — onto a
+        queryset whose ``node_field`` holds a GeographyNode id.
+
+        A correlated subquery, so the database resolves ownership row by row through
+        ``assign_scope_role_from_idx`` inside the caller's own cursor. Streaming callers
+        should prefer this over batched id lookups: a large ``scope_id__in`` list makes the
+        planner abandon the index. Inherited ownership is not covered — pair it with
+        ``owner_labels_for_nodes`` for the rows that come back with no direct owner.
+        """
+        on = _as_of(on)
+        owner = (
+            Assignment.objects
+            .filter(_effective_filter(on), scope_id=OuterRef(node_field),
+                    role_in_scope=Assignment.Role.OWNER, is_active=True)
+            .order_by('-effective_from')
+        )
+        return qs.annotate(
+            owner_code=Subquery(owner.values('assignee__code')[:1]),
+            owner_name=Subquery(owner.values('assignee__name')[:1]),
+        )
+
+    @staticmethod
+    def owner_labels_for_nodes(nodes, on: date | None = None,
+                               inherited_cache: dict | None = None) -> dict[int, tuple[str, str]]:
+        """``{node id: (owner code, owner name)}`` — who is accountable for each territory in
+        ``nodes`` (an iterable of ``(id, path)``), falling back to the nearest owned ancestor
+        when a territory has no owner of its own. Territories with no owner anywhere up the
+        chain are absent from the result.
+
+        Built for streaming callers (exports, paginated grids), so it takes an explicit batch
+        rather than a subtree root: a whole-subtree index would be O(territories) in memory —
+        hundreds of MB at 200k outlets. Direct owners resolve by indexed ``scope_id``; only
+        the territories without one pay an ancestor lookup, and passing the same
+        ``inherited_cache`` dict across batches makes that cost converge to zero (ancestors
+        repeat across every batch).
+        """
+        nodes = list(nodes)
+        if not nodes:
+            return {}
+        on = _as_of(on)
+        cache = inherited_cache if inherited_cache is not None else {}
+
+        direct = {}
+        for scope_id, code, name in (
+            Assignment.objects
+            .filter(_effective_filter(on), role_in_scope=Assignment.Role.OWNER,
+                    is_active=True, scope_id__in=[n[0] for n in nodes])
+            .order_by('scope_id', '-effective_from')
+            .values_list('scope_id', 'assignee__code', 'assignee__name')
+        ):
+            direct.setdefault(scope_id, (code, name))  # newest effective_from wins
+
+        # Only the unowned territories need the walk up. Their ancestor paths are a small,
+        # heavily repeated set (trees are shallow), so one lookup serves the whole stream.
+        orphans = [(nid, path) for nid, path in nodes if nid not in direct]
+        unknown = {step for _, path in orphans
+                   for step in _ancestor_paths(path)[1:] if step not in cache}
+        if unknown:
+            found = {}
+            for path, code, name in (
+                Assignment.objects
+                .filter(_effective_filter(on), role_in_scope=Assignment.Role.OWNER,
+                        is_active=True, scope__path__in=unknown)
+                .order_by('scope_id', '-effective_from')
+                .values_list('scope__path', 'assignee__code', 'assignee__name')
+            ):
+                found.setdefault(path, (code, name))
+            cache.update({step: found.get(step) for step in unknown})
+
+        resolved = dict(direct)
+        for nid, path in orphans:
+            hit = next((cache[step] for step in _ancestor_paths(path)[1:] if cache.get(step)), None)
+            if hit is not None:
+                resolved[nid] = hit
+        return resolved
 
     @staticmethod
     def open_owner_scopes_map(assignee_ids, on: date | None = None) -> dict[int, list]:
